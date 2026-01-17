@@ -2,12 +2,39 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Django",
-            "type": "python",
+            "name": "Django: Run Server",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/manage.py",
-            "args": ["runserver"],
-            "django": true
+            "program": "${workspaceFolder}/connectly_project/manage.py",
+            "args": [
+                "runserver"
+            ],
+            "django": true,
+            "justMyCode": true,
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/connectly_project"
+        },
+        {
+            "name": "Django: Run Server (No Reload)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/connectly_project/manage.py",
+            "args": [
+                "runserver",
+                "--noreload"
+            ],
+            "django": true,
+            "justMyCode": true,
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/connectly_project"
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }

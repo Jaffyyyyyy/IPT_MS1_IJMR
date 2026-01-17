@@ -36,9 +36,16 @@ def get_posts(request):
 def create_post(request):
     if request.method == 'POST':
         try:
+            # Breakpoint tip: Click in the left margin here to add a breakpoint
+            # You can inspect 'request.body' and 'data' variables
             data = json.loads(request.body)
+            
+            # Breakpoint tip: Add breakpoint here to check if author exists
             author = User.objects.get(id=data['author'])
+            
+            # Breakpoint tip: Add breakpoint here to see post before saving
             post = Post.objects.create(content=data['content'], author=author)
+            
             return JsonResponse({'id': post.id, 'message': 'Post created successfully'}, status=201)
         except User.DoesNotExist:
             return JsonResponse({'error': 'Author not found'}, status=404)
