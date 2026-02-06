@@ -20,7 +20,11 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+<<<<<<< HEAD
     path('api-auth/', include('rest_framework.urls')),  # DRF login/logout for browsable API
     path('api/', include('posts.urls')), # Our new API endpoints
+=======
+    path('api/', include('posts.urls')),
+>>>>>>> mainrepo/master
 ]
 

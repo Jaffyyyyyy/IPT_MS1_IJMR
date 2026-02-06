@@ -1,5 +1,17 @@
 from rest_framework import serializers
+<<<<<<< HEAD
 from .models import User, Post
+=======
+from django.contrib.auth.models import User as AuthUser
+from .models import User, Post, Comment
+
+>>>>>>> mainrepo/master
+
+class AuthUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AuthUser
+        fields = ['username', 'email']  # Exclude sensitive fields like password
+
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
