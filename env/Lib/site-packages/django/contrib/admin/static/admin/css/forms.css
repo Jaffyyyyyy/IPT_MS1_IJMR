@@ -30,8 +30,7 @@ form .form-row p {
     flex-wrap: wrap;
 }
 
-.form-multiline > div,
-.form-multiline > fieldset {
+.form-multiline > div {
     padding-bottom: 10px;
 }
 
@@ -94,7 +93,7 @@ fieldset .inline-heading,
 /* ALIGNED FIELDSETS */
 
 .aligned fieldset {
-    flex-grow: 1;
+    width: 100%;
     border-top: none;
 }
 
