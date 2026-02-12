@@ -31,6 +31,18 @@ class Comment(models.Model):
         return f"Comment by {self.author.username} on Post {self.post.id}"
 
 
+class Like(models.Model):
+    user = models.ForeignKey(User, related_name='likes', on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, related_name='likes', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'post')
+
+    def __str__(self):
+        return f"Like by {self.user.username} on Post {self.post.id}"
+
+
 class Task(models.Model):
     """Task model supporting different task types: regular, priority, recurring."""
     

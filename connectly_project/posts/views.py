@@ -5,17 +5,24 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.models import Group, User as AuthUser
 from django.contrib.auth import authenticate
-from .models import User, Post, Comment, Task
-from .serializers import UserSerializer, PostSerializer, CommentSerializer, TaskSerializer
+from .models import User, Post, Comment, Task, Like
+from .serializers import UserSerializer, PostSerializer, CommentSerializer, TaskSerializer, LikeSerializer
 from .permissions import IsPostAuthor
 from singletons.logger_singleton import LoggerSingleton
 from singletons.config_manager import ConfigManager
+from rest_framework.pagination import PageNumberPagination
 from factories.task_factory import TaskFactory
 
 # Initialize logger singleton
 logger = LoggerSingleton().get_logger()
 # Initialize config manager singleton
 config = ConfigManager()
+
+
+class CommentPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 class UserListCreate(APIView):
@@ -134,6 +141,107 @@ class PostDetailView(APIView):
             )
         self.check_object_permissions(request, post)
         return Response({"content": post.content})
+
+
+class PostLikeToggle(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        logger.info(f"User {request.user.username} attempting to like post {pk}")
+        try:
+            post = Post.objects.get(pk=pk)
+        except Post.DoesNotExist:
+            logger.warning(f"Like failed: Post {pk} not found.")
+            return Response(
+                {'error': 'Post not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            liking_user = User.objects.get(username=request.user.username)
+        except User.DoesNotExist:
+            logger.error(f"Internal user model not found for authenticated user {request.user.username}")
+            return Response(
+                {'error': 'Internal server error: User not found.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        like, created = Like.objects.get_or_create(user=liking_user, post=post)
+
+        if created:
+            logger.info(f"User {request.user.username} liked post {pk}.")
+            return Response(
+                {'message': 'Post liked successfully.'},
+                status=status.HTTP_201_CREATED
+            )
+        else:
+            like.delete()
+            logger.info(f"User {request.user.username} unliked post {pk}.")
+            return Response(
+                {'message': 'Post unliked successfully.'},
+                status=status.HTTP_200_OK
+            )
+
+
+class PostCommentCreate(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        logger.info(f"User {request.user.username} attempting to comment on post {pk}")
+        try:
+            post = Post.objects.get(pk=pk)
+        except Post.DoesNotExist:
+            logger.warning(f"Comment failed: Post {pk} not found.")
+            return Response(
+                {'error': 'Post not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            commenting_user = User.objects.get(username=request.user.username)
+        except User.DoesNotExist:
+            logger.error(f"Internal user model not found for authenticated user {request.user.username}")
+            return Response(
+                {'error': 'Internal server error: User not found.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        data = request.data.copy()
+        data['post'] = post.id
+        data['author'] = commenting_user.id
+
+        serializer = CommentSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            logger.info(f"User {request.user.username} commented on post {pk}.")
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        logger.warning(f"Comment creation failed for post {pk}: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class PostCommentList(APIView):
+    pagination_class = CommentPagination # Assign the pagination class
+
+    def get(self, request, pk):
+        logger.info(f"Fetching comments for post {pk}")
+        try:
+            post = Post.objects.get(pk=pk)
+        except Post.DoesNotExist:
+            logger.warning(f"Fetching comments failed: Post {pk} not found.")
+            return Response(
+                {'error': 'Post not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        comments = Comment.objects.filter(post=post).order_by('-created_at')
+
+        # Apply pagination
+        paginator = self.pagination_class()
+        paginated_comments = paginator.paginate_queryset(comments, request, view=self)
+        
+        serializer = CommentSerializer(paginated_comments, many=True)
+        return paginator.get_paginated_response(serializer.data) # Return paginated response
 
 
 class ProtectedView(APIView):
