@@ -1,18 +1,19 @@
 import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .models import Post
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from .models import Post, Comment
 from .serializers import UserSerializer, PostSerializer, CommentSerializer
 from .permissions import IsPostAuthor
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
 from singletons.logger_singleton import LoggerSingleton
+from singletons.config_manager import ConfigManager
 from factories.post_factory import PostFactory
 
 logger = LoggerSingleton().get_logger()
