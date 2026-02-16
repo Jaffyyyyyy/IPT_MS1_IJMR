@@ -1,4 +1,4 @@
 # Factories package for standardized object creation
-from .task_factory import TaskFactory
+from .post_factory import PostFactory
 
-__all__ = ['TaskFactory']
+__all__ = ['PostFactory']
