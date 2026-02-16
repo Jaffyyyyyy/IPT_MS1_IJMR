@@ -1,397 +1,206 @@
+import json
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .models import Post
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth.models import Group, User as AuthUser
-from django.contrib.auth import authenticate
-from .models import User, Post, Comment, Task, Like
-from .serializers import UserSerializer, PostSerializer, CommentSerializer, TaskSerializer, LikeSerializer
+from .models import Post, Comment
+from .serializers import UserSerializer, PostSerializer, CommentSerializer
 from .permissions import IsPostAuthor
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
 from singletons.logger_singleton import LoggerSingleton
-from singletons.config_manager import ConfigManager
-from rest_framework.pagination import PageNumberPagination
-from factories.task_factory import TaskFactory
+from factories.post_factory import PostFactory
 
-# Initialize logger singleton
 logger = LoggerSingleton().get_logger()
-# Initialize config manager singleton
-config = ConfigManager()
+logger.info("API initialized successfully.")
 
+def get_users(request):
+    try:
+        users = list(User.objects.values('id', 'username', 'email', 'created_at'))
+        logger.info(f"Retrieved {len(users)} users")
+        return JsonResponse(users, safe=False)
+    except Exception as e:
+        logger.error(f"Error retrieving users: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
 
-class CommentPagination(PageNumberPagination):
-    page_size = 10
-    page_size_query_param = 'page_size'
-    max_page_size = 100
+@csrf_exempt
+def create_user(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            user = User.objects.create_user(username=data['username'], password=data.get('password', 'secure_pass123'), email=data.get('email', ''))
+            logger.info(f"User created successfully: {user.username}")
+            return JsonResponse({'id': user.id, 'username': user.username, 'message': 'User created successfully'}, status=201)
+        except Exception as e:
+            logger.error(f"Error creating user: {str(e)}")
+            return JsonResponse({'error': str(e)}, status=400)
+
+@csrf_exempt
+def authenticate_user(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            user = authenticate(username=data['username'], password=data['password'])
+            if user is not None:
+                logger.info(f"Authentication successful for user: {user.username}")
+                return JsonResponse({'message': 'Authentication successful!', 'username': user.username}, status=200)
+            else:
+                logger.warning(f"Invalid credentials attempt for username: {data.get('username', 'unknown')}")
+                return JsonResponse({'message': 'Invalid credentials.'}, status=401)
+        except Exception as e:
+            logger.error(f"Error during authentication: {str(e)}")
+            return JsonResponse({'error': str(e)}, status=400)
+
+def get_posts(request):
+    try:
+        posts = list(Post.objects.values('id', 'content', 'author', 'created_at'))
+        logger.info(f"Retrieved {len(posts)} posts")
+        return JsonResponse(posts, safe=False)
+    except Exception as e:
+        logger.error(f"Error retrieving posts: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+@csrf_exempt
+def create_post(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            author = User.objects.get(id=data['author'])
+            post = Post.objects.create(content=data['content'], author=author)
+            logger.info(f"Post created successfully by user {author.username}: Post ID {post.id}")
+            return JsonResponse({'id': post.id, 'message': 'Post created successfully'}, status=201)
+        except User.DoesNotExist:
+            logger.error(f"Author not found with ID: {data.get('author', 'unknown')}")
+            return JsonResponse({'error': 'Author not found'}, status=404)
+        except Exception as e:
+            logger.error(f"Error creating post: {str(e)}")
+            return JsonResponse({'error': str(e)}, status=400)
 
 
 class UserListCreate(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
-        logger.info("Fetching all users")
         users = User.objects.all()
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
 
 
     def post(self, request):
-        logger.info("Creating new user")
-        serializer = UserSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            logger.info(f"User created successfully: {serializer.data.get('username')}")
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        logger.warning(f"User creation failed: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class RegisterUser(APIView):
-    """Register a new user with encrypted password using Django's create_user."""
-    def post(self, request):
-        logger.info("User registration attempt")
         username = request.data.get('username')
-        password = request.data.get('password')
+        password = request.data.get('password', 'secure_pass123')
         email = request.data.get('email', '')
-
-        if not username or not password:
-            logger.warning("Registration failed: missing username or password")
-            return Response(
-                {'error': 'Username and password are required.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if AuthUser.objects.filter(username=username).exists():
-            logger.warning(f"Registration failed: username '{username}' already exists")
-            return Response(
-                {'error': 'Username already exists.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user = AuthUser.objects.create_user(
-            username=username, password=password, email=email
-        )
-        logger.info(f"User registered successfully: {username}")
-        return Response(
-            {'message': 'User registered successfully.', 'username': user.username},
-            status=status.HTTP_201_CREATED
-        )
-
-
-class LoginUser(APIView):
-    """Authenticate a user and verify credentials."""
-    def post(self, request):
-        logger.info("Login attempt")
-        username = request.data.get('username')
-        password = request.data.get('password')
-
-        if not username or not password:
-            logger.warning("Login failed: missing credentials")
-            return Response(
-                {'error': 'Username and password are required.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user = authenticate(username=username, password=password)
-        if user is not None:
-            logger.info(f"User logged in successfully: {username}")
-            return Response(
-                {'message': 'Authentication successful!', 'username': user.username},
-                status=status.HTTP_200_OK
-            )
-        logger.warning(f"Login failed for user: {username}")
-        return Response(
-            {'error': 'Invalid credentials.'},
-            status=status.HTTP_401_UNAUTHORIZED
-        )
+        
+        if not username:
+            logger.warning("User creation attempt without username")
+            return Response({'error': 'Username is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            user = User.objects.create_user(username=username, password=password, email=email)
+            logger.info(f"User created via API: {user.username}")
+            serializer = UserSerializer(user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error(f"Error creating user via API: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PostListCreate(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
-        logger.info("Fetching all posts")
         posts = Post.objects.all()
         serializer = PostSerializer(posts, many=True)
         return Response(serializer.data)
 
 
     def post(self, request):
-        logger.info("Creating new post")
         serializer = PostSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            logger.info("Post created successfully")
+            logger.info(f"Post created via API by user: {request.user.username}")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        logger.warning(f"Post creation failed: {serializer.errors}")
+        logger.warning(f"Invalid post data: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class PostDetailView(APIView):
-    """Retrieve a post with role-based access control."""
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated, IsPostAuthor]
-
-
-    def get(self, request, pk):
-        logger.info(f"Fetching post with id: {pk}")
-        try:
-            post = Post.objects.get(pk=pk)
-        except Post.DoesNotExist:
-            logger.warning(f"Post not found: {pk}")
-            return Response(
-                {'error': 'Post not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        self.check_object_permissions(request, post)
-        return Response({"content": post.content})
-
-
-class PostLikeToggle(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, pk):
-        logger.info(f"User {request.user.username} attempting to like post {pk}")
-        try:
-            post = Post.objects.get(pk=pk)
-        except Post.DoesNotExist:
-            logger.warning(f"Like failed: Post {pk} not found.")
-            return Response(
-                {'error': 'Post not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        try:
-            liking_user = User.objects.get(username=request.user.username)
-        except User.DoesNotExist:
-            logger.error(f"Internal user model not found for authenticated user {request.user.username}")
-            return Response(
-                {'error': 'Internal server error: User not found.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        like, created = Like.objects.get_or_create(user=liking_user, post=post)
-
-        if created:
-            logger.info(f"User {request.user.username} liked post {pk}.")
-            return Response(
-                {'message': 'Post liked successfully.'},
-                status=status.HTTP_201_CREATED
-            )
-        else:
-            like.delete()
-            logger.info(f"User {request.user.username} unliked post {pk}.")
-            return Response(
-                {'message': 'Post unliked successfully.'},
-                status=status.HTTP_200_OK
-            )
-
-
-class PostCommentCreate(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, pk):
-        logger.info(f"User {request.user.username} attempting to comment on post {pk}")
-        try:
-            post = Post.objects.get(pk=pk)
-        except Post.DoesNotExist:
-            logger.warning(f"Comment failed: Post {pk} not found.")
-            return Response(
-                {'error': 'Post not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        try:
-            commenting_user = User.objects.get(username=request.user.username)
-        except User.DoesNotExist:
-            logger.error(f"Internal user model not found for authenticated user {request.user.username}")
-            return Response(
-                {'error': 'Internal server error: User not found.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        data = request.data.copy()
-        data['post'] = post.id
-        data['author'] = commenting_user.id
-
-        serializer = CommentSerializer(data=data)
-        if serializer.is_valid():
-            serializer.save()
-            logger.info(f"User {request.user.username} commented on post {pk}.")
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        logger.warning(f"Comment creation failed for post {pk}: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class PostCommentList(APIView):
-    pagination_class = CommentPagination # Assign the pagination class
-
-    def get(self, request, pk):
-        logger.info(f"Fetching comments for post {pk}")
-        try:
-            post = Post.objects.get(pk=pk)
-        except Post.DoesNotExist:
-            logger.warning(f"Fetching comments failed: Post {pk} not found.")
-            return Response(
-                {'error': 'Post not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        comments = Comment.objects.filter(post=post).order_by('-created_at')
-
-        # Apply pagination
-        paginator = self.pagination_class()
-        paginated_comments = paginator.paginate_queryset(comments, request, view=self)
-        
-        serializer = CommentSerializer(paginated_comments, many=True)
-        return paginator.get_paginated_response(serializer.data) # Return paginated response
-
-
-class ProtectedView(APIView):
-    """A protected endpoint that requires token authentication."""
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-
-    def get(self, request):
-        logger.info(f"Protected view accessed by: {request.user.username}")
-        return Response({"message": "Authenticated!"})
 
 
 class CommentListCreate(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
-        logger.info("Fetching all comments")
         comments = Comment.objects.all()
         serializer = CommentSerializer(comments, many=True)
         return Response(serializer.data)
 
 
     def post(self, request):
-        logger.info("Creating new comment")
         serializer = CommentSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            logger.info("Comment created successfully")
+            logger.info(f"Comment created via API by user: {request.user.username}")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        logger.warning(f"Comment creation failed: {serializer.errors}")
+        logger.warning(f"Invalid comment data: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TaskListView(APIView):
-    """List all tasks or retrieve tasks by type."""
-    
-    def get(self, request):
-        logger.info("Fetching all tasks")
-        task_type = request.query_params.get('type', None)
-        
-        if task_type:
-            tasks = Task.objects.filter(task_type=task_type)
-            logger.info(f"Filtering tasks by type: {task_type}")
-        else:
-            tasks = Task.objects.all()
-        
-        serializer = TaskSerializer(tasks, many=True)
-        return Response(serializer.data)
+class PostDetailView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated, IsPostAuthor]
 
-
-class CreateTaskView(APIView):
-    """Create tasks using the Factory pattern."""
-    
-    def post(self, request):
-        logger.info("Creating new task via factory")
-        data = request.data
-        
+    def get(self, request, pk):
         try:
-            # Get the assigned user
-            assigned_to_id = data.get('assigned_to')
-            try:
-                assigned_to = User.objects.get(pk=assigned_to_id)
-            except User.DoesNotExist:
-                logger.warning(f"Task creation failed: user {assigned_to_id} not found")
-                return Response(
-                    {'error': 'Assigned user not found.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            post = Post.objects.get(pk=pk)
+            self.check_object_permissions(request, post)
+            logger.info(f"User {request.user.username} accessed post {pk}")
+            return Response({"content": post.content})
+        except Post.DoesNotExist:
+            logger.error(f"Post not found with ID: {pk}")
+            return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
+class CreatePostView(APIView):
+    """
+    API View to create posts using the Factory Pattern.
+    Supports authentication and uses PostFactory for standardized post creation.
+    """
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data
+        try:
+            # Note: author is not set here because Post.author expects posts.User,
+            # while request.user is django.contrib.auth.models.User
             
-            # Use factory to create task
-            task = TaskFactory.create_task(
-                task_type=data.get('task_type', 'regular'),
-                title=data.get('title'),
-                description=data.get('description', ''),
-                assigned_to=assigned_to,
-                metadata=data.get('metadata', {})
+            post = PostFactory.create_post(
+                post_type=data.get('post_type', 'text'),
+                title=data['title'],
+                content=data.get('content', ''),
+                metadata=data.get('metadata', {}),
+                author=None  # Set to None since author field is nullable
             )
-            
-            # Get default priority from config if not specified
-            default_priority = config.get_setting("DEFAULT_TASK_PRIORITY")
-            logger.info(f"Task created successfully: {task.title} (ID: {task.id})")
-            
+            logger.info(f"Post created successfully using Factory by user {request.user.username}: Post ID {post.id}")
             return Response({
-                'message': 'Task created successfully!',
-                'task_id': task.id,
-                'task_type': task.task_type,
-                'default_priority': default_priority
+                'message': 'Post created successfully!',
+                'post_id': post.id,
+                'post_type': post.post_type,
+                'title': post.title
             }, status=status.HTTP_201_CREATED)
-            
+        except KeyError as e:
+            logger.warning(f"Missing required field in post creation: {str(e)}")
+            return Response({'error': f'Missing required field: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
         except ValueError as e:
-            logger.warning(f"Task creation failed: {str(e)}")
+            logger.warning(f"Validation error in post creation: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            logger.error(f"Unexpected error during task creation: {str(e)}")
-            return Response(
-                {'error': 'An unexpected error occurred.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-class TaskDetailView(APIView):
-    """Retrieve, update, or delete a specific task."""
-    
-    def get(self, request, pk):
-        logger.info(f"Fetching task with id: {pk}")
-        try:
-            task = Task.objects.get(pk=pk)
-        except Task.DoesNotExist:
-            logger.warning(f"Task not found: {pk}")
-            return Response(
-                {'error': 'Task not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        serializer = TaskSerializer(task)
-        return Response(serializer.data)
-    
-    def put(self, request, pk):
-        logger.info(f"Updating task with id: {pk}")
-        try:
-            task = Task.objects.get(pk=pk)
-        except Task.DoesNotExist:
-            logger.warning(f"Task not found for update: {pk}")
-            return Response(
-                {'error': 'Task not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        serializer = TaskSerializer(task, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            logger.info(f"Task updated successfully: {pk}")
-            return Response(serializer.data)
-        logger.warning(f"Task update failed: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    def delete(self, request, pk):
-        logger.info(f"Deleting task with id: {pk}")
-        try:
-            task = Task.objects.get(pk=pk)
-        except Task.DoesNotExist:
-            logger.warning(f"Task not found for deletion: {pk}")
-            return Response(
-                {'error': 'Task not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        task.delete()
-        logger.info(f"Task deleted successfully: {pk}")
-        return Response(
-            {'message': 'Task deleted successfully.'},
-            status=status.HTTP_204_NO_CONTENT
-        )
+            logger.error(f"Error creating post via Factory: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

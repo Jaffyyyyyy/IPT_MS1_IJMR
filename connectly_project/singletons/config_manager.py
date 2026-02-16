@@ -1,11 +1,3 @@
-"""
-ConfigManager Singleton
-
-This Singleton ensures a single instance of ConfigManager is used throughout 
-the application, centralizing configuration settings.
-"""
-
-
 class ConfigManager:
     _instance = None
 
@@ -17,19 +9,13 @@ class ConfigManager:
 
     def _initialize(self):
         self.settings = {
-            "DEFAULT_TASK_PRIORITY": "Medium",
-            "ENABLE_NOTIFICATIONS": True,
-            "RATE_LIMIT": 50
+            "DEFAULT_PAGE_SIZE": 20,
+            "ENABLE_ANALYTICS": True,
+            "RATE_LIMIT": 100
         }
 
     def get_setting(self, key):
-        """Get a configuration setting by key."""
         return self.settings.get(key)
 
     def set_setting(self, key, value):
-        """Set a configuration setting."""
         self.settings[key] = value
-
-    def get_all_settings(self):
-        """Return all configuration settings."""
-        return self.settings.copy()
