@@ -4,7 +4,7 @@ from rest_framework import status
 from .models import User, Task
 from singletons.config_manager import ConfigManager
 from singletons.logger_singleton import LoggerSingleton
-from factories.task_factory import TaskFactory
+from connectly_project.factories.post_factory import TaskFactory
 
 
 class ConfigManagerSingletonTest(TestCase):

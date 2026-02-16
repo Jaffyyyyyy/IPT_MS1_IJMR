@@ -11,7 +11,7 @@ from .permissions import IsPostAuthor
 from singletons.logger_singleton import LoggerSingleton
 from singletons.config_manager import ConfigManager
 from rest_framework.pagination import PageNumberPagination
-from factories.task_factory import TaskFactory
+from connectly_project.factories.post_factory import TaskFactory
 
 # Initialize logger singleton
 logger = LoggerSingleton().get_logger()
