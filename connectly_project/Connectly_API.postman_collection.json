@@ -1,0 +1,900 @@
+{
+	"info": {
+		"_postman_id": "connectly-api-collection",
+		"name": "Connectly API",
+		"description": "Full API test collection for the Connectly Project.\n\nSETUP:\n1. Start HTTPS server: `python manage.py runserver_plus --cert-file cert.pem --key-file key.pem`\n2. Token is already configured: 8162911afba3fc49964ecfd83802c92d1b2d376d\n3. In Postman Settings → General → DISABLE 'SSL certificate verification'\n4. Import this collection and test!\n\nIMPORTANT: SSL verification MUST be disabled for self-signed certificates.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "apikey",
+		"apikey": [
+			{
+				"key": "key",
+				"value": "Authorization",
+				"type": "string"
+			},
+			{
+				"key": "value",
+				"value": "Token {{auth_token}}",
+				"type": "string"
+			},
+			{
+				"key": "in",
+				"value": "header",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://127.0.0.1:8000",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "8162911afba3fc49964ecfd83802c92d1b2d376d",
+			"type": "string"
+		},
+		{
+			"key": "custom_user_id",
+			"value": "5",
+			"type": "string"
+		},
+		{
+			"key": "post_id",
+			"value": "1",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Authentication",
+			"description": "User authentication endpoint",
+			"item": [
+				{
+					"name": "Authenticate User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Authentication successful', function () {",
+									"    pm.response.to.have.status(200);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.message).to.eql('Authentication successful!');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"testuser\",\n    \"password\": \"secure_pass123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/authenticate/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "authenticate", ""]
+						},
+						"description": "Authenticate a user with username and password. No token required."
+					},
+					"response": []
+				},
+				{
+					"name": "Authenticate User - Invalid Credentials",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Invalid credentials returns 401', function () {",
+									"    pm.response.to.have.status(401);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.message).to.eql('Invalid credentials.');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"testuser\",\n    \"password\": \"wrongpassword\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/authenticate/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "authenticate", ""]
+						},
+						"description": "Test authentication with invalid credentials."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Users (DRF)",
+			"description": "User management via Django REST Framework (Token auth required)",
+			"item": [
+				{
+					"name": "List All Users",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Response is an array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/users/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "users", ""]
+						},
+						"description": "Get a list of all users. Requires Token authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Create User",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Generate unique username with timestamp",
+									"const timestamp = Date.now();",
+									"pm.collectionVariables.set('unique_username', 'user_' + timestamp);"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('User created with 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test('Response contains user fields', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('username');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"{{unique_username}}\",\n    \"email\": \"{{unique_username}}@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/users/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "users", ""]
+						},
+						"description": "Create a new custom user. Requires Token authentication. Username is automatically generated with timestamp to ensure uniqueness."
+					},
+					"response": []
+				},
+				{
+					"name": "Create User - Missing Username (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 400 for missing username', function () {",
+									"    pm.response.to.have.status(400);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"noname@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/users/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "users", ""]
+						},
+						"description": "Test creating a user without a username - should return 400."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Posts (DRF)",
+			"description": "Post CRUD operations via Django REST Framework (Token auth required)",
+			"item": [
+				{
+					"name": "List All Posts",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Response is an array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", ""]
+						},
+						"description": "Get a list of all posts with comments. Requires Token authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post (Serializer)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Post created with 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test('Response contains post fields', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('content');",
+									"});",
+									"// Save post_id for later use",
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set('post_id', jsonData.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"content\": \"This is a test post created via serializer\",\n    \"author\": {{custom_user_id}}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", ""]
+						},
+						"description": "Create a post via the PostListCreate serializer endpoint. Requires Token authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Post Detail",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Response contains content', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('content');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", ""]
+						},
+						"description": "Get details for a specific post by ID. Requires Token authentication and post author permission."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Post Detail - Not Found (404)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 404 for non-existent post', function () {",
+									"    pm.response.to.have.status(404);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/99999/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "99999", ""]
+						},
+						"description": "Test getting a non-existent post - should return 404."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Posts (Factory Pattern)",
+			"description": "Post creation using the Factory design pattern via /posts/create/ endpoint (Token auth required)",
+			"item": [
+				{
+					"name": "Create Text Post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Post created with 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test('Post type is text', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.post_type).to.eql('text');",
+									"    pm.expect(jsonData).to.have.property('post_id');",
+									"    pm.expect(jsonData).to.have.property('title');",
+									"});",
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set('post_id', jsonData.post_id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"title\": \"My First Text Post\",\n    \"content\": \"This is a text post created using the Factory Pattern\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Create a text post using PostFactory. Requires Token authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Image Post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Image post created with 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test('Post type is image', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.post_type).to.eql('image');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"image\",\n    \"title\": \"My Image Post\",\n    \"content\": \"A beautiful landscape photo\",\n    \"metadata\": {\n        \"file_size\": 2048000,\n        \"dimensions\": \"1920x1080\",\n        \"format\": \"jpg\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Create an image post with required file_size in metadata."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Video Post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Video post created with 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test('Post type is video', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.post_type).to.eql('video');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"video\",\n    \"title\": \"My Video Post\",\n    \"content\": \"Tutorial video on Django REST Framework\",\n    \"metadata\": {\n        \"duration\": 300,\n        \"resolution\": \"1080p\",\n        \"codec\": \"h264\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Create a video post with required duration in metadata."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - Default Type (text)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Post created with 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test('Defaults to text type', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.post_type).to.eql('text');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Post Without Explicit Type\",\n    \"content\": \"This should default to text type\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Create a post without specifying post_type - should default to 'text'."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Image Post - Missing file_size (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 400 for missing file_size', function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test('Error mentions file_size', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.include('file_size');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"image\",\n    \"title\": \"Invalid Image Post\",\n    \"content\": \"Missing required file_size metadata\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test creating an image post without the required file_size in metadata - should return 400."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Video Post - Missing duration (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 400 for missing duration', function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test('Error mentions duration', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.include('duration');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"video\",\n    \"title\": \"Invalid Video Post\",\n    \"content\": \"Missing required duration metadata\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test creating a video post without the required duration in metadata - should return 400."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - Invalid Type (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 400 for invalid post type', function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test('Error mentions Invalid post type', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.include('Invalid post type');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"audio\",\n    \"title\": \"Invalid Type Post\",\n    \"content\": \"This type does not exist\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test creating a post with an invalid post_type - should return 400."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - Missing Title (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 400 for missing title', function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"pm.test('Error mentions missing field', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"content\": \"Post without a title\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test creating a post without the required title field - should return 400."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - No Auth (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 401 without authentication', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"title\": \"Unauthorized Post\",\n    \"content\": \"This should fail without auth\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test creating a post without authentication token - should return 401."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Comments",
+			"description": "Comment management (Token auth required)",
+			"item": [
+				{
+					"name": "List All Comments",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status is 200', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"pm.test('Response is an array', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/comments/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "comments", ""]
+						},
+						"description": "Get a list of all comments. Requires Token authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Comment",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Comment created with 201', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"pm.test('Response contains comment fields', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('text');",
+									"    pm.expect(jsonData).to.have.property('author');",
+									"    pm.expect(jsonData).to.have.property('post');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"This is a test comment on the post!\",\n    \"author\": {{custom_user_id}},\n    \"post\": {{post_id}}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/comments/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "comments", ""]
+						},
+						"description": "Create a comment on a post. Requires Token authentication. Make sure post_id and custom_user_id variables are set."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Comment - No Auth (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 401 without authentication', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"Unauthorized comment\",\n    \"author\": 1,\n    \"post\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/comments/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "comments", ""]
+						},
+						"description": "Test creating a comment without authentication - should return 401."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

@@ -9,9 +9,8 @@ from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
-from .models import Post, Comment
+from .models import Post, Comment, User as CustomUser
 from .serializers import UserSerializer, PostSerializer, CommentSerializer
-from .permissions import IsPostAuthor
 from singletons.logger_singleton import LoggerSingleton
 from singletons.config_manager import ConfigManager
 from factories.post_factory import PostFactory
@@ -87,14 +86,13 @@ class UserListCreate(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        users = User.objects.all()
+        users = CustomUser.objects.all()
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
 
 
     def post(self, request):
         username = request.data.get('username')
-        password = request.data.get('password', 'secure_pass123')
         email = request.data.get('email', '')
         
         if not username:
@@ -102,12 +100,13 @@ class UserListCreate(APIView):
             return Response({'error': 'Username is required'}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            user = User.objects.create_user(username=username, password=password, email=email)
-            logger.info(f"User created via API: {user.username}")
+            # Create custom user (posts.models.User)
+            user = CustomUser.objects.create(username=username, email=email)
+            logger.info(f"Custom user created via API: {user.username}")
             serializer = UserSerializer(user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         except Exception as e:
-            logger.error(f"Error creating user via API: {str(e)}")
+            logger.error(f"Error creating custom user via API: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -153,12 +152,11 @@ class CommentListCreate(APIView):
 
 class PostDetailView(APIView):
     authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated, IsPostAuthor]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
         try:
             post = Post.objects.get(pk=pk)
-            self.check_object_permissions(request, post)
             logger.info(f"User {request.user.username} accessed post {pk}")
             return Response({"content": post.content})
         except Post.DoesNotExist:

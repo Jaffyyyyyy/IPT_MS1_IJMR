@@ -17,12 +17,12 @@ venv.bak/
 
 # Django
 *.log
-db.sqlite3
 db.sqlite3-journal
 /staticfiles/
 /media/
 *.pot
 local_settings.py
+# Note: db.sqlite3 is included for easy peer setup with test data
 
 # IDE
 .vscode/
