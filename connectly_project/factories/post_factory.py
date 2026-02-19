@@ -22,6 +22,14 @@ class PostFactory:
         """
         if metadata is None:
             metadata = {}
+        
+        # Validate metadata is a dictionary
+        if not isinstance(metadata, dict):
+            raise ValueError("Metadata must be a JSON object (dictionary)")
+        
+        # Validate title length (max_length=255 in model)
+        if len(title) > 255:
+            raise ValueError("Title cannot exceed 255 characters")
             
         if post_type not in dict(Post.POST_TYPES):
             raise ValueError("Invalid post type")

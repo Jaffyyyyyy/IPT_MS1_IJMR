@@ -1,5 +1,4 @@
-from django.test import TestCase
-from django.contrib.auth.models import User as DjangoUser
+from django.test import TestCase, override_settings
 from rest_framework.test import APITestCase, APIClient
 from rest_framework.authtoken.models import Token
 from rest_framework import status
@@ -111,18 +110,19 @@ class PostFactoryTestCase(TestCase):
         self.assertIsNone(post.author)
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class CreatePostViewTestCase(APITestCase):
     """Test cases for the CreatePostView API endpoint"""
     
     def setUp(self):
         """Set up test client and user with authentication"""
         self.client = APIClient()
-        self.django_user = DjangoUser.objects.create_user(
+        self.user = User.objects.create_user(
             username='apiuser',
             email='api@example.com',
             password='apipass123'
         )
-        self.token = Token.objects.create(user=self.django_user)
+        self.token = Token.objects.create(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
     
     def test_create_text_post_via_api(self):
@@ -140,7 +140,7 @@ class CreatePostViewTestCase(APITestCase):
         
         # Verify post was created in database
         post = Post.objects.get(id=response.data['post_id'])
-        self.assertEqual(post.author, self.django_user)
+        self.assertEqual(post.author, self.user)
         self.assertEqual(post.content, 'Created via API')
     
     def test_create_image_post_via_api(self):

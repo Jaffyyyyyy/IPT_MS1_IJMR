@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "connectly-api-collection",
 		"name": "Connectly API",
-		"description": "Full API test collection for the Connectly Project.\n\nSETUP:\n1. Start HTTPS server: `python manage.py runserver_plus --cert-file cert.pem --key-file key.pem`\n2. Token is already configured: 8162911afba3fc49964ecfd83802c92d1b2d376d\n3. In Postman Settings → General → DISABLE 'SSL certificate verification'\n4. Import this collection and test!\n\nIMPORTANT: SSL verification MUST be disabled for self-signed certificates.",
+		"description": "Full API test collection for the Connectly Project with User Interactions (Likes & Comments).\n\nFEATURES:\n- User Authentication\n- Post Management (Factory Pattern)\n- Comments with validation\n- Likes/Unlikes with duplicate prevention\n- Paginated comment retrieval\n- Real-time like/comment counts\n\nSETUP:\n1. Start HTTPS server: `python manage.py runserver_plus --cert-file cert.pem --key-file key.pem`\n2. Token is already configured: 862bff975353833c417ef008836d063aab3f9f30\n3. In Postman Settings → General → DISABLE 'SSL certificate verification'\n4. Import this collection and test!\n\nIMPORTANT: SSL verification MUST be disabled for self-signed certificates.\n\nSee LIKES_COMMENTS_API.md for detailed documentation.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
@@ -33,12 +33,12 @@
 		},
 		{
 			"key": "auth_token",
-			"value": "8162911afba3fc49964ecfd83802c92d1b2d376d",
+			"value": "862bff975353833c417ef008836d063aab3f9f30",
 			"type": "string"
 		},
 		{
 			"key": "custom_user_id",
-			"value": "5",
+			"value": "1",
 			"type": "string"
 		},
 		{
@@ -891,6 +891,1840 @@
 							"path": ["posts", "comments", ""]
 						},
 						"description": "Test creating a comment without authentication - should return 401."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User Interactions - Likes",
+			"description": "Like and Unlike functionality with comprehensive validation tests (Token auth required)",
+			"item": [
+				{
+					"name": "Like a Post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Post liked successfully', function () {",
+									"    pm.response.to.have.status(201);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.message).to.eql('Post liked successfully');",
+									"    pm.expect(jsonData.like).to.have.property('id');",
+									"    pm.expect(jsonData.like).to.have.property('user');",
+									"    pm.expect(jsonData.like).to.have.property('post');",
+									"});",
+									"",
+									"pm.test('Like has correct structure', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.like).to.have.property('user_username');",
+									"    pm.expect(jsonData.like).to.have.property('post_title');",
+									"    pm.expect(jsonData.like).to.have.property('created_at');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/like/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "like", ""]
+						},
+						"description": "Like a post. First time should succeed with 201 Created."
+					},
+					"response": []
+				},
+				{
+					"name": "Like a Post - Already Liked (Duplicate Prevention)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Duplicate like prevented', function () {",
+									"    pm.response.to.have.status(400);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.include('already liked');",
+									"});",
+									"",
+									"pm.test('Error message is descriptive', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.be.a('string');",
+									"    pm.expect(jsonData.error.length).to.be.above(10);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/like/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "like", ""]
+						},
+						"description": "Try to like the same post again - should return 400 with error message."
+					},
+					"response": []
+				},
+				{
+					"name": "Like a Non-Existent Post (404)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 404 for non-existent post', function () {",
+									"    pm.response.to.have.status(404);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.include('not found');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/99999/like/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "99999", "like", ""]
+						},
+						"description": "Try to like a post that doesn't exist - should return 404."
+					},
+					"response": []
+				},
+				{
+					"name": "Like a Post - No Auth (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 401 without authentication', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/like/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "like", ""]
+						},
+						"description": "Try to like without authentication - should return 401."
+					},
+					"response": []
+				},
+				{
+					"name": "Unlike a Post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Post unliked successfully', function () {",
+									"    pm.response.to.have.status(200);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.message).to.include('unliked');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/like/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "like", ""]
+						},
+						"description": "Unlike a previously liked post. Should return 200 OK."
+					},
+					"response": []
+				},
+				{
+					"name": "Unlike a Post - Not Liked (400)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Cannot unlike non-liked post', function () {",
+									"    pm.response.to.have.status(400);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.include('not liked');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/like/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "like", ""]
+						},
+						"description": "Try to unlike a post that wasn't liked - should return 400."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User Interactions - Comments on Posts",
+			"description": "Comment on specific posts with validation (Token auth required)",
+			"item": [
+				{
+					"name": "Add Comment to Post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Comment added successfully', function () {",
+									"    pm.response.to.have.status(201);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.message).to.include('Comment added');",
+									"    pm.expect(jsonData.comment).to.have.property('id');",
+									"});",
+									"",
+									"pm.test('Comment has correct structure', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.comment).to.have.property('text');",
+									"    pm.expect(jsonData.comment).to.have.property('author');",
+									"    pm.expect(jsonData.comment).to.have.property('author_username');",
+									"    pm.expect(jsonData.comment).to.have.property('post');",
+									"    pm.expect(jsonData.comment).to.have.property('post_title');",
+									"    pm.expect(jsonData.comment).to.have.property('created_at');",
+									"});",
+									"",
+									"pm.test('Comment text matches input', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.comment.text).to.include('This is an amazing post');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"This is an amazing post! I learned a lot from it.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Add a comment to a specific post. Should return 201 with comment details."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment - Empty Text (Validation)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Empty comment rejected', function () {",
+									"    pm.response.to.have.status(400);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.text).to.exist;",
+									"    pm.expect(jsonData.text[0]).to.include('empty');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Try to add an empty comment - should return 400 with validation error."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment - Whitespace Only (Validation)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Whitespace-only comment rejected', function () {",
+									"    pm.response.to.have.status(400);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.text).to.exist;",
+									"    pm.expect(jsonData.text[0]).to.include('empty');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"   \\n   \\t   \"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Try to add a comment with only whitespace - should return 400."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment - No Text Field (Validation)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Missing text field rejected', function () {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"comment\": \"This should fail\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Try to add a comment without the 'text' field - should return 400."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment to Non-Existent Post (404)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 404 for non-existent post', function () {",
+									"    pm.response.to.have.status(404);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.include('not found');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"Comment on non-existent post\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/99999/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "99999", "comment", ""]
+						},
+						"description": "Try to comment on a post that doesn't exist - should return 404."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment - No Auth (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 401 without authentication', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"Unauthorized comment\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Try to add a comment without authentication - should return 401."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Long Comment (Boundary Test)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Long comment accepted', function () {",
+									"    pm.response.to.have.status(201);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.comment.text.length).to.be.above(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"This is a very long comment to test boundary conditions. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Test adding a long comment to verify there are no length restrictions."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User Interactions - Get Comments",
+			"description": "Retrieve comments for posts with pagination (Token auth required)",
+			"item": [
+				{
+					"name": "Get All Comments for a Post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Comments retrieved successfully', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has pagination structure', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('count');",
+									"    pm.expect(jsonData).to.have.property('results');",
+									"    pm.expect(jsonData.results).to.be.an('array');",
+									"});",
+									"",
+									"pm.test('Comments have correct structure', function () {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.results.length > 0) {",
+									"        var comment = jsonData.results[0];",
+									"        pm.expect(comment).to.have.property('id');",
+									"        pm.expect(comment).to.have.property('text');",
+									"        pm.expect(comment).to.have.property('author');",
+									"        pm.expect(comment).to.have.property('author_username');",
+									"        pm.expect(comment).to.have.property('post');",
+									"        pm.expect(comment).to.have.property('created_at');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""]
+						},
+						"description": "Get all comments for a specific post with default pagination."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - With Pagination",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Paginated comments retrieved', function () {",
+									"    pm.response.to.have.status(200);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.results.length).to.be.at.most(5);",
+									"});",
+									"",
+									"pm.test('Pagination info present', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('count');",
+									"    pm.expect(jsonData.count).to.be.a('number');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/?page=1&page_size=5",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "page_size",
+									"value": "5"
+								}
+							]
+						},
+						"description": "Get comments with custom page size (5 per page)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - Page 2",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Second page retrieved or 404 if no data', function () {",
+									"    var status = pm.response.code;",
+									"    pm.expect([200, 404]).to.include(status);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/?page=2&page_size=5",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "2"
+								},
+								{
+									"key": "page_size",
+									"value": "5"
+								}
+							]
+						},
+						"description": "Get second page of comments (may be empty)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - Large Page Size",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Large page size handled', function () {",
+									"    pm.response.to.have.status(200);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.results.length).to.be.at.most(100);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/?page_size=100",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""],
+							"query": [
+								{
+									"key": "page_size",
+									"value": "100"
+								}
+							]
+						},
+						"description": "Test maximum page size (capped at 100)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - Non-Existent Post (404)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 404 for non-existent post', function () {",
+									"    pm.response.to.have.status(404);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.include('not found');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/99999/comments/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "99999", "comments", ""]
+						},
+						"description": "Try to get comments for a post that doesn't exist - should return 404."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - No Auth (401)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 401 without authentication', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""]
+						},
+						"description": "Try to get comments without authentication - should return 401."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User Interactions - Post Details with Counts",
+			"description": "Get post details including like_count and comment_count",
+			"item": [
+				{
+					"name": "Get Post Detail with Counts",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Post details retrieved', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Response has like_count', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('like_count');",
+									"    pm.expect(jsonData.like_count).to.be.a('number');",
+									"    pm.expect(jsonData.like_count).to.be.at.least(0);",
+									"});",
+									"",
+									"pm.test('Response has comment_count', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('comment_count');",
+									"    pm.expect(jsonData.comment_count).to.be.a('number');",
+									"    pm.expect(jsonData.comment_count).to.be.at.least(0);",
+									"});",
+									"",
+									"pm.test('Post has all required fields', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('title');",
+									"    pm.expect(jsonData).to.have.property('content');",
+									"    pm.expect(jsonData).to.have.property('author');",
+									"    pm.expect(jsonData).to.have.property('author_username');",
+									"    pm.expect(jsonData).to.have.property('created_at');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", ""]
+						},
+						"description": "Get detailed post information including like and comment counts."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Counts After Like",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// First, like the post",
+									"const likeRequest = {",
+									"    url: pm.variables.get('base_url') + '/posts/' + pm.variables.get('post_id') + '/like/',",
+									"    method: 'POST',",
+									"    header: {",
+									"        'Authorization': 'Token ' + pm.variables.get('auth_token')",
+									"    }",
+									"};",
+									"",
+									"pm.sendRequest(likeRequest, function (err, response) {",
+									"    console.log('Like attempt:', response.code);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Like count is at least 1', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.like_count).to.be.at.least(1);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", ""]
+						},
+						"description": "Verify that like_count increases after liking a post."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Counts After Comment",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// First, add a comment",
+									"const commentRequest = {",
+									"    url: pm.variables.get('base_url') + '/posts/' + pm.variables.get('post_id') + '/comment/',",
+									"    method: 'POST',",
+									"    header: {",
+									"        'Content-Type': 'application/json',",
+									"        'Authorization': 'Token ' + pm.variables.get('auth_token')",
+									"    },",
+									"    body: {",
+									"        mode: 'raw',",
+									"        raw: JSON.stringify({ text: 'Test comment for count verification' })",
+									"    }",
+									"};",
+									"",
+									"pm.sendRequest(commentRequest, function (err, response) {",
+									"    console.log('Comment attempt:', response.code);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Comment count is at least 1', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.comment_count).to.be.at.least(1);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", ""]
+						},
+						"description": "Verify that comment_count increases after adding a comment."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Edge Cases - Authentication",
+			"description": "Authentication and authorization edge case tests",
+			"item": [
+				{
+					"name": "Invalid Token Format",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 401 for invalid token format', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Token invalid-token-123",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/posts/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", ""]
+						},
+						"description": "Test with a malformed/invalid token"
+					},
+					"response": []
+				},
+				{
+					"name": "Empty Authorization Header",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 401 for empty auth header', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/posts/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", ""]
+						},
+						"description": "Test with empty Authorization header value"
+					},
+					"response": []
+				},
+				{
+					"name": "Bearer Token Instead of Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Returns 401 for wrong token type', function () {",
+									"    pm.response.to.have.status(401);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/posts/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", ""]
+						},
+						"description": "Test with Bearer prefix instead of Token"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Edge Cases - Users",
+			"description": "User management edge case tests",
+			"item": [
+				{
+					"name": "Create User - Duplicate Username",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Duplicate username rejected', function () {",
+									"    pm.response.to.have.status(400);",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.error).to.exist;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"testuser\",\n    \"email\": \"another@example.com\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/users/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "users", ""]
+						},
+						"description": "Try to create a user with username 'testuser' which already exists"
+					},
+					"response": []
+				},
+				{
+					"name": "Create User - Special Characters in Username",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Special chars in username handled', function () {",
+									"    // Could be 201 if allowed or 400 if rejected",
+									"    pm.expect(pm.response.code).to.be.oneOf([201, 400]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"user@test#123\",\n    \"email\": \"special@example.com\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/users/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "users", ""]
+						},
+						"description": "Test username with special characters"
+					},
+					"response": []
+				},
+				{
+					"name": "Create User - Very Long Username",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Long username handled appropriately', function () {",
+									"    // Django's default max_length for username is 150",
+									"    pm.expect(pm.response.code).to.be.oneOf([201, 400]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"a123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890\",\n    \"email\": \"long@example.com\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/users/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "users", ""]
+						},
+						"description": "Test with username exceeding max_length (160 chars)"
+					},
+					"response": []
+				},
+				{
+					"name": "Create User - Invalid Email Format",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Invalid email handled', function () {",
+									"    // Django may accept or reject based on validation",
+									"    pm.expect(pm.response.code).to.be.oneOf([201, 400]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"invalidemailuser\",\n    \"email\": \"not-an-email\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/users/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "users", ""]
+						},
+						"description": "Test with invalid email format"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Edge Cases - Posts",
+			"description": "Post creation edge case tests",
+			"item": [
+				{
+					"name": "Create Post - Very Long Title (256+ chars)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Long title rejected or truncated', function () {",
+									"    // Max length is 255, should return 400",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 500]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"title\": \"This is a very long title that exceeds 255 characters to test boundary conditions in the database schema and validation logic to ensure proper error handling when titles are too long and exceed the maximum allowed length defined in the model field definition which should trigger a validation error or database constraint violation and return an appropriate error response to the client making the request to create this post\",\n    \"content\": \"Testing boundary conditions\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test post title exceeding 255 characters"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - XSS in Title",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Post created with XSS attempt', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('XSS content is stored (sanitization on frontend)', function () {",
+									"    var jsonData = pm.response.json();",
+									"    // XSS should be stored as-is, sanitized on display",
+									"    pm.expect(jsonData.title).to.include('script');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"title\": \"<script>alert('XSS')</script>Test Post\",\n    \"content\": \"Testing XSS handling\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test XSS attempt in post title"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - Empty Content",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Post with empty content handled', function () {",
+									"    // TextField allows blank by default",
+									"    pm.expect(pm.response.code).to.be.oneOf([201, 400]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"title\": \"Empty Content Post\",\n    \"content\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test post creation with empty content field"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - Large Metadata JSON",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Large metadata handled', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([201, 400, 413]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"image\",\n    \"title\": \"Large Metadata Test\",\n    \"content\": \"Testing large metadata\",\n    \"metadata\": {\n        \"file_size\": 5000000,\n        \"tags\": [\"tag1\", \"tag2\", \"tag3\", \"tag4\", \"tag5\", \"tag6\", \"tag7\", \"tag8\", \"tag9\", \"tag10\"],\n        \"description\": \"This is a very long description that contains a lot of text to test how the system handles large metadata objects with many fields and long string values that might approach database or application limits for JSON field storage and processing\",\n        \"extra_field1\": \"value1\",\n        \"extra_field2\": \"value2\",\n        \"extra_field3\": \"value3\",\n        \"extra_field4\": \"value4\",\n        \"extra_field5\": \"value5\"\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test with large metadata JSON object"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - Invalid Metadata JSON",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Invalid JSON rejected', function () {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"title\": \"Invalid Metadata\",\n    \"content\": \"Test\",\n    \"metadata\": \"not-a-json-object\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test with string instead of JSON object in metadata"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Edge Cases - Comments",
+			"description": "Comment edge case tests",
+			"item": [
+				{
+					"name": "Add Comment - Very Large Text (10KB)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Large comment handled', function () {",
+									"    // TextField has no limit, should accept",
+									"    pm.expect(pm.response.code).to.be.oneOf([201, 413]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur. At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident, similique sunt in culpa qui officia deserunt mollitia animi, id est laborum et dolorum fuga. Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus, omnis voluptas assumenda est, omnis dolor repellendus. Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae. Itaque earum rerum hic tenetur a sapiente delectus, ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur. At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident, similique sunt in culpa qui officia deserunt mollitia animi, id est laborum et dolorum fuga. Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus, omnis voluptas assumenda est, omnis dolor repellendus. Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae. Itaque earum rerum hic tenetur a sapiente delectus, ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. This is a very large comment to test boundary conditions and ensure the system can handle large text inputs properly without truncation or error.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Test with large comment text (~4KB)"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment - XSS Attempt",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Comment with XSS created', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('XSS stored but should be sanitized on display', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.comment.text).to.include('script');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"<script>alert('XSS Comment')</script>Great post!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Test XSS in comment text"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment - Unicode and Emoji",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Unicode comment created successfully', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('Unicode preserved correctly', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.comment.text).to.include('🎉');",
+									"    pm.expect(jsonData.comment.text).to.include('你好');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"Great post! 🎉👍 This is amazing! 你好世界 مرحبا Привет\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Test Unicode characters and emoji in comments"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Comment - SQL Injection Attempt",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('SQL injection handled safely', function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test('SQL stored as plain text', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.comment.text).to.include(\"'\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"text\": \"'; DROP TABLE posts; --\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comment/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comment", ""]
+						},
+						"description": "Test SQL injection attempt in comment"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Edge Cases - HTTP & Content-Type",
+			"description": "HTTP and content-type edge case tests",
+			"item": [
+				{
+					"name": "Create Post - Missing Content-Type Header",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Missing Content-Type handled', function () {",
+									"    // May return 400 or 415 (Unsupported Media Type)",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 415]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"title\": \"No Content-Type\",\n    \"content\": \"Test\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test POST without Content-Type header"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - Wrong Content-Type",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Wrong Content-Type handled', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 415]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "text/plain",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"title\": \"Wrong Content-Type\",\n    \"content\": \"Test\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test with text/plain instead of application/json"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post - Malformed JSON Body",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Malformed JSON rejected', function () {",
+									"    pm.response.to.have.status(400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"post_type\": \"text\",\n    \"title\": \"Malformed,\n    \"content\": \"Test\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/posts/create/",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "create", ""]
+						},
+						"description": "Test with malformed JSON (missing quote)"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Edge Cases - Pagination",
+			"description": "Pagination edge case tests",
+			"item": [
+				{
+					"name": "Get Comments - Page Beyond Available",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Page beyond range handled gracefully', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Returns empty results', function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData.results).to.be.an('array');",
+									"    pm.expect(jsonData.results.length).to.equal(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/?page=9999",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "9999"
+								}
+							]
+						},
+						"description": "Test page number far beyond available data"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - Negative Page Number",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Negative page handled', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/?page=-1",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "-1"
+								}
+							]
+						},
+						"description": "Test with negative page number"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - Non-Numeric Page",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Non-numeric page handled', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/?page=abc",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""],
+							"query": [
+								{
+									"key": "page",
+									"value": "abc"
+								}
+							]
+						},
+						"description": "Test with non-numeric page parameter"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - Zero Page Size",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Zero page size handled', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/?page_size=0",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""],
+							"query": [
+								{
+									"key": "page_size",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Test with page_size=0"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - Negative Page Size",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Negative page size handled', function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/?page_size=-10",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""],
+							"query": [
+								{
+									"key": "page_size",
+									"value": "-10"
+								}
+							]
+						},
+						"description": "Test with negative page_size"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Comments - Page Size Exceeding Max",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Excessive page size limited to max', function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test('Page size capped at max (100)', function () {",
+									"    var jsonData = pm.response.json();",
+									"    // Should be capped at max_page_size=100",
+									"    if (jsonData.results) {",
+									"        pm.expect(jsonData.results.length).to.be.at.most(100);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/posts/{{post_id}}/comments/?page_size=1000",
+							"host": ["{{base_url}}"],
+							"path": ["posts", "{{post_id}}", "comments", ""],
+							"query": [
+								{
+									"key": "page_size",
+									"value": "1000"
+								}
+							]
+						},
+						"description": "Test with page_size exceeding max_page_size (100)"
 					},
 					"response": []
 				}

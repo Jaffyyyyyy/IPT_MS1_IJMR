@@ -1,6 +1,19 @@
 # Connectly Project - Django REST API
 
-A Django REST Framework API with Token Authentication, Factory Pattern implementation, and Singleton design patterns.
+A Django REST Framework API with Token Authentication, Factory Pattern, Singleton design patterns, and User Interaction features (Likes & Comments).
+
+> **🤖 AI Disclosure:** This project was developed with assistance from Claude Sonnet 4.5 (Anthropic AI). AI was used for debugging, testing, and documentation.
+
+## ✨ NEW FEATURES
+
+### User Interactions (v2.0)
+- ✅ **Like/Unlike Posts** - Users can like and unlike posts
+- ✅ **Comment on Posts** - Add comments to posts with validation
+- ✅ **Paginated Comments** - Efficient retrieval of large comment datasets
+- ✅ **Like & Comment Counts** - Real-time counts on post details
+- ✅ **Duplicate Prevention** - Users can only like a post once
+
+📚 **See [LIKES_COMMENTS_API.md](LIKES_COMMENTS_API.md) for full documentation**
 
 ## 🚀 Quick Setup for Your Peers
 
@@ -128,24 +141,20 @@ All authenticated endpoints require: `Authorization: Token <your-token>`
 ### Posts (Token auth required)
 - `GET /posts/` - List all posts
 - `POST /posts/` - Create post (via serializer)
-- `GET /posts/{id}/` - Get post detail
+- `GET /posts/{id}/` - Get post detail (with like_count & comment_count)
 - `POST /posts/create/` - Create post (via Factory Pattern)
+
+### User Interactions - NEW! 🎉 (Token auth required)
+- `POST /posts/{id}/like/` - Like a post
+- `DELETE /posts/{id}/like/` - Unlike a post
+- `POST /posts/{id}/comment/` - Add a comment to a post
+- `GET /posts/{id}/comments/` - Get all comments for a post (paginated)
 
 ### Comments (Token auth required)
 - `GET /posts/comments/` - List all comments
 - `POST /posts/comments/` - Create comment
 
-## 🧪 Running Tests
 
-Run Django unit tests:
-```bash
-python manage.py test posts
-```
-
-Run specific test class:
-```bash
-python manage.py test posts.tests.PostFactoryTestCase
-```
 
 ## 📝 Environment Variables
 
@@ -187,8 +196,8 @@ pip install -r requirements.txt
 
 - **Username:** testuser
 - **Password:** secure_pass123
-- **Token:** 8162911afba3fc49964ecfd83802c92d1b2d376d
-- **Custom User ID:** 5
+- **Token:** 862bff975353833c417ef008836d063aab3f9f30
+- **User ID:** 1
 
 ## 📚 Technologies Used
 
@@ -198,6 +207,17 @@ pip install -r requirements.txt
 - django-extensions 4.1
 - Werkzeug 3.1.5 (for HTTPS server)
 - pyOpenSSL 25.3.0 (for SSL support)
+
+## 🤖 AI Development Acknowledgment
+
+This project was developed with significant assistance from **Claude Sonnet 4.5** (Anthropic). The AI assisted with:
+
+- **Testing**: Creating comprehensive unit tests and 84 Postman API tests including edge cases
+- **Debugging**: Resolving SSL redirect issues, validation logic, and pagination errors
+- **Documentation**: Writing this README and API documentation
+- **Best Practices**: Ensuring Django/DRF conventions and security practices
+
+All code was MANUALLY reviewed, tested, and validated to ensure functionality and understanding.
 
 ## 📄 License
 
