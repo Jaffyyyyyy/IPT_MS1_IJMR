@@ -16,10 +16,13 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic.base import RedirectView # Added for root URL redirect
 
 urlpatterns = [
+    path('', RedirectView.as_view(url='/posts/', permanent=False)), # Redirect root to /posts/
     path('admin/', admin.site.urls),
     path('api-auth/', include('rest_framework.urls')),  # DRF login/logout
     path('posts/', include('posts.urls')),
+    path('accounts/', include('allauth.urls')), # Added for django-allauth
 ]
 
