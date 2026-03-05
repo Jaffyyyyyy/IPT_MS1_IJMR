@@ -84,8 +84,8 @@ CRISPY_TEMPLATE_PACK = "bootstrap5"
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'APP': {
-            'client_id': '***REMOVED***',
-            'secret': '***REMOVED***',
+            'client_id': '', #place ID here
+            'secret': '', #place secret here
             'key': ''
         },
         'SCOPE': [
