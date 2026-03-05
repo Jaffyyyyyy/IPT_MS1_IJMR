@@ -9,6 +9,7 @@ __pycache__/
 .Python
 
 # Virtual Environment
+.env
 env/
 venv/
 ENV/
@@ -22,6 +23,7 @@ db.sqlite3-journal
 /media/
 *.pot
 local_settings.py
+/connectly_project/.env # Exclude .env file with secrets
 # Note: db.sqlite3 is included for easy peer setup with test data
 
 # IDE

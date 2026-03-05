@@ -2,11 +2,13 @@ from django.urls import path
 from . import views
 from .views import (
     UserListCreate, PostListCreate, CommentListCreate, PostDetailView, 
-    CreatePostView, LikePostView, CommentOnPostView, PostCommentsView
+    CreatePostView, LikePostView, CommentOnPostView, PostCommentsView,
+    AuthenticatedUserProfileView # Added for user profile
 )
 
 urlpatterns = [
     path('users/', UserListCreate.as_view(), name='user-list-create'),
+    path('users/me/', AuthenticatedUserProfileView.as_view(), name='user-profile'), # Added for user profile
     path('', PostListCreate.as_view(), name='post-list-create'),
     path('create/', CreatePostView.as_view(), name='post-create-factory'),
     path('<int:pk>/', PostDetailView.as_view(), name='post-detail'),

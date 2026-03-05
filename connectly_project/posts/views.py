@@ -366,4 +366,15 @@ class PostDetailView(APIView):
             logger.error(f"Post not found with ID: {pk}")
             return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
 
+class AuthenticatedUserProfileView(APIView):
+    """
+    API View to retrieve the profile of the currently authenticated user.
+    """
+    authentication_classes = [TokenAuthentication] # Or SessionAuthentication if primarily browser-based
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data)
+
 
