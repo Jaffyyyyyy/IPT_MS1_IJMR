@@ -3123,6 +3123,243 @@
       "description": "Pagination edge case tests"
     },
     {
+      "name": "News Feed",
+      "item": [
+        {
+          "name": "News Feed Endpoint Page 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has pagination fields\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"count\");",
+                  "    pm.expect(json).to.have.property(\"next\");",
+                  "    pm.expect(json).to.have.property(\"previous\");",
+                  "    pm.expect(json).to.have.property(\"results\");",
+                  "});",
+                  "",
+                  "pm.test(\"count is a number\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.count).to.be.a(\"number\");",
+                  "});",
+                  "",
+                  "pm.test(\"results is an array\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.results).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"results length matches page_size\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.results.length).to.be.at.most(5);",
+                  "});",
+                  "",
+                  "pm.test(\"Each result has required fields\", function () {",
+                  "    const json = pm.response.json();",
+                  "    json.results.forEach(function (item) {",
+                  "        pm.expect(item).to.have.property(\"id\");",
+                  "        pm.expect(item).to.have.property(\"title\");",
+                  "        pm.expect(item).to.have.property(\"content\");",
+                  "        pm.expect(item).to.have.property(\"post_type\");",
+                  "        pm.expect(item).to.have.property(\"metadata\");",
+                  "        pm.expect(item).to.have.property(\"author\");",
+                  "        pm.expect(item).to.have.property(\"author_username\");",
+                  "        pm.expect(item).to.have.property(\"created_at\");",
+                  "        pm.expect(item).to.have.property(\"like_count\");",
+                  "        pm.expect(item).to.have.property(\"comment_count\");",
+                  "        pm.expect(item).to.have.property(\"comments\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Each result id is a number\", function () {",
+                  "    const json = pm.response.json();",
+                  "    json.results.forEach(function (item) {",
+                  "        pm.expect(item.id).to.be.a(\"number\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Each result post_type is a string\", function () {",
+                  "    const json = pm.response.json();",
+                  "    json.results.forEach(function (item) {",
+                  "        pm.expect(item.post_type).to.be.a(\"string\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Each result comments is an array\", function () {",
+                  "    const json = pm.response.json();",
+                  "    json.results.forEach(function (item) {",
+                  "        pm.expect(item.comments).to.be.an(\"array\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Response time is under 3000ms\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(3000);",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://127.0.0.1:8000/posts/feed/?page=2&page_size=5",
+              "protocol": "https",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "posts",
+                "feed",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "2"
+                },
+                {
+                  "key": "page_size",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "News Feed Endpoint Page 3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has pagination fields\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"count\");",
+                  "    pm.expect(json).to.have.property(\"next\");",
+                  "    pm.expect(json).to.have.property(\"previous\");",
+                  "    pm.expect(json).to.have.property(\"results\");",
+                  "});",
+                  "",
+                  "pm.test(\"count is a number\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.count).to.be.a(\"number\");",
+                  "});",
+                  "",
+                  "pm.test(\"results is an array\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.results).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"results length matches page_size\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.results.length).to.be.at.most(5);",
+                  "});",
+                  "",
+                  "pm.test(\"Each result has required fields\", function () {",
+                  "    const json = pm.response.json();",
+                  "    json.results.forEach(function (item) {",
+                  "        pm.expect(item).to.have.property(\"id\");",
+                  "        pm.expect(item).to.have.property(\"title\");",
+                  "        pm.expect(item).to.have.property(\"content\");",
+                  "        pm.expect(item).to.have.property(\"post_type\");",
+                  "        pm.expect(item).to.have.property(\"metadata\");",
+                  "        pm.expect(item).to.have.property(\"author\");",
+                  "        pm.expect(item).to.have.property(\"author_username\");",
+                  "        pm.expect(item).to.have.property(\"created_at\");",
+                  "        pm.expect(item).to.have.property(\"like_count\");",
+                  "        pm.expect(item).to.have.property(\"comment_count\");",
+                  "        pm.expect(item).to.have.property(\"comments\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Each result id is a number\", function () {",
+                  "    const json = pm.response.json();",
+                  "    json.results.forEach(function (item) {",
+                  "        pm.expect(item.id).to.be.a(\"number\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Each result post_type is a string\", function () {",
+                  "    const json = pm.response.json();",
+                  "    json.results.forEach(function (item) {",
+                  "        pm.expect(item.post_type).to.be.a(\"string\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Each result comments is an array\", function () {",
+                  "    const json = pm.response.json();",
+                  "    json.results.forEach(function (item) {",
+                  "        pm.expect(item.comments).to.be.an(\"array\");",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test(\"Response time is under 3000ms\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(3000);",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://127.0.0.1:8000/posts/feed/?page=3&page_size=5",
+              "protocol": "https",
+              "host": [
+                "127",
+                "0",
+                "0",
+                "1"
+              ],
+              "port": "8000",
+              "path": [
+                "posts",
+                "feed",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "3"
+                },
+                {
+                  "key": "page_size",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Google OAuth",
       "item": [
         {
