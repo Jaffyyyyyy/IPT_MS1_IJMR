@@ -19,6 +19,7 @@ venv.bak/
 # Django
 *.log
 db.sqlite3-journal
+/connectly_project/db.sqlite3 # Exclude database file from connectly_project
 /staticfiles/
 /media/
 *.pot
@@ -33,6 +34,10 @@ local_settings.py
 *.swo
 *~
 .DS_Store
+
+google_secrets.txt
+bfg-1.15.0.jar
+..bfg-report/
 
 # Testing
 .coverage
