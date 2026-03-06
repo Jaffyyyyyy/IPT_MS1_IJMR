@@ -378,3 +378,42 @@ class AuthenticatedUserProfileView(APIView):
         return Response(serializer.data)
 
 
+class NewsFeedPagination(PageNumberPagination):
+    """Custom pagination for the news feed"""
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class NewsFeedView(APIView):
+    """
+    API View to retrieve a paginated list of posts for the news feed.
+    Posts are sorted by creation date (newest first).
+    """
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    pagination_class = NewsFeedPagination
+
+    def get(self, request):
+        posts = Post.objects.all().order_by('-created_at') # Newest posts first
+        
+        paginator = self.pagination_class()
+        try:
+            paginated_posts = paginator.paginate_queryset(posts, request)
+        except Exception:
+            # If page is out of range, return empty results
+            logger.info(f"Page out of range for news feed, returning empty results")
+            return Response({
+                'count': posts.count(),
+                'next': None,
+                'previous': None,
+                'results': []
+            })
+        
+        serializer = PostSerializer(paginated_posts, many=True)
+        logger.info(f"Retrieved {len(serializer.data)} posts for news feed")
+        
+        return paginator.get_paginated_response(serializer.data)
+
+
+
