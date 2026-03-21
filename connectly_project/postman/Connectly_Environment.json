@@ -1,0 +1,49 @@
+{
+  "id": "connectly-local-env-v2",
+  "name": "Connectly – Local Dev",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "https://127.0.0.1:8000",
+      "type": "default",
+      "enabled": true,
+      "description": "Django dev server base URL. Change to https:// if SSL is enabled."
+    },
+    {
+      "key": "admin_username",
+      "value": "admin",
+      "type": "default",
+      "enabled": true,
+      "description": "FILL IN: username of a user whose role='admin' (created via manage.py createsuperuser, then role set to admin in Django admin panel)"
+    },
+    {
+      "key": "admin_password",
+      "value": "adminpass123",
+      "type": "secret",
+      "enabled": true,
+      "description": "FILL IN: password of the admin user above"
+    },
+    { "key": "admin_token",            "value": "", "type": "default", "enabled": true },
+    { "key": "user_username",          "value": "", "type": "default", "enabled": true },
+    { "key": "user_password",          "value": "", "type": "default", "enabled": true },
+    { "key": "user_id",                "value": "", "type": "default", "enabled": true },
+    { "key": "user_token",             "value": "", "type": "default", "enabled": true },
+    { "key": "user2_username",         "value": "", "type": "default", "enabled": true },
+    { "key": "user2_password",         "value": "", "type": "default", "enabled": true },
+    { "key": "user2_token",            "value": "", "type": "default", "enabled": true },
+    { "key": "guest_username",         "value": "", "type": "default", "enabled": true },
+    { "key": "guest_password",         "value": "", "type": "default", "enabled": true },
+    { "key": "guest_token",            "value": "", "type": "default", "enabled": true },
+    { "key": "test_post_id",           "value": "", "type": "default", "enabled": true },
+    { "key": "test_private_post_id",   "value": "", "type": "default", "enabled": true },
+    { "key": "admin_post_id",          "value": "", "type": "default", "enabled": true },
+    { "key": "test_comment_id",        "value": "", "type": "default", "enabled": true },
+    { "key": "test_comment2_id",       "value": "", "type": "default", "enabled": true },
+    { "key": "feed_count_cold",        "value": "", "type": "default", "enabled": true },
+    { "key": "cached_post_title",      "value": "", "type": "default", "enabled": true },
+    { "key": "cache_bust_post_id",     "value": "", "type": "default", "enabled": true }
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_at": "2026-03-21T00:00:00.000Z",
+  "_postman_exported_using": "Postman/10.0"
+}

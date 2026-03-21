@@ -3,7 +3,7 @@ from posts.models import Post
 
 class PostFactory:
     @staticmethod
-    def create_post(post_type, title, content='', metadata=None, author=None):
+    def create_post(post_type, title, content='', metadata=None, author=None, privacy='public'):
         """
         Factory method to create posts with validation.
         
@@ -44,6 +44,7 @@ class PostFactory:
             title=title,
             content=content,
             post_type=post_type,
+            privacy=privacy,
             metadata=metadata,
             author=author
         )

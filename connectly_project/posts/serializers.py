@@ -5,7 +5,7 @@ from .models import User, Post, Comment, Like
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'created_at']  # Exclude sensitive fields like password
+        fields = ['id', 'username', 'email', 'role', 'created_at']  # Exclude sensitive fields like password
 
 
 class PostSerializer(serializers.ModelSerializer):
@@ -16,8 +16,8 @@ class PostSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Post
-        fields = ['id', 'title', 'content', 'post_type', 'metadata', 'author', 'author_username', 
-                  'created_at', 'like_count', 'comment_count', 'comments']
+        fields = ['id', 'title', 'content', 'post_type', 'privacy', 'metadata', 'author',
+                  'author_username', 'created_at', 'like_count', 'comment_count', 'comments']
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -40,6 +40,24 @@ class CommentSerializer(serializers.ModelSerializer):
         if not Post.objects.filter(id=value.id).exists():
             raise serializers.ValidationError("Post not found.")
         return value
+
+
+class PostFeedSerializer(serializers.ModelSerializer):
+    """
+    Lightweight serializer for the news feed.
+    Excludes the nested comments list to avoid over-fetching; rely on
+    DB-level annotated like_count / comment_count instead of model properties.
+    """
+    like_count = serializers.IntegerField(source='annotated_like_count', read_only=True)
+    comment_count = serializers.IntegerField(source='annotated_comment_count', read_only=True)
+    author_username = serializers.CharField(source='author.username', read_only=True)
+
+    class Meta:
+        model = Post
+        fields = [
+            'id', 'title', 'content', 'post_type', 'privacy', 'metadata',
+            'author', 'author_username', 'created_at', 'like_count', 'comment_count',
+        ]
 
 
 class LikeSerializer(serializers.ModelSerializer):

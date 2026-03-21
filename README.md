@@ -1,14 +1,15 @@
 # Connectly Project - Django REST API
 
-A Django REST Framework API with Token Authentication, Factory Pattern, Singleton design patterns, OAuth support, and User Interaction features (Likes & Comments).
+A Django REST Framework API with Token Authentication, Role-Based Access Control (RBAC), Privacy Settings, Caching, Pagination, Factory Pattern, Singleton design patterns, OAuth support, and User Interaction features (Likes & Comments).
 
 > **🤖 AI Disclosure:** This README file was created using AI assistance. The rest of the codebase was developed without AI assistance.
 
 ## ✨ Features
 
 ### Core Functionality
-- ✅ **User Management** - Custom user model with authentication
+- ✅ **User Management** - Custom user model with role-based access control (`admin`, `user`, `guest`)
 - ✅ **Post Creation** - Create text, image, and video posts
+- ✅ **Post Privacy** - Posts can be `public` (visible to all) or `private` (visible to author only)
 - ✅ **Factory Pattern** - Type-specific post creation with validation
 - ✅ **Token Authentication** - Secure API access with Django REST Framework tokens
 - ✅ **OAuth Integration** - Google OAuth via django-allauth
@@ -16,10 +17,24 @@ A Django REST Framework API with Token Authentication, Factory Pattern, Singleto
 ### User Interactions
 - ✅ **Like/Unlike Posts** - Users can like and unlike posts
 - ✅ **Comment on Posts** - Add comments to posts with validation
-- ✅ **Paginated Comments** - Efficient retrieval of large comment datasets (10 per page)
-- ✅ **Like & Comment Counts** - Real-time counts on post details
+- ✅ **Paginated Comments** - Efficient retrieval of large comment datasets (10 per page, configurable)
+- ✅ **Like & Comment Counts** - DB-level aggregated counts on post details and feed
 - ✅ **Duplicate Prevention** - Users can only like a post once
-- ✅ **News Feed** - Paginated feed of all posts (newest first)
+- ✅ **News Feed** - Paginated, cached feed of posts (newest first, privacy-filtered)
+
+### Security & Access Control (RBAC)
+- ✅ **Admin role** - Full access: list/create users, edit/delete any post, delete any comment
+- ✅ **User role** - Read/write access to own content; can read all public posts
+- ✅ **Guest role** - Read-only; blocked from creating posts, comments, or likes
+- ✅ **Object-level permissions** - Only the post author (or admin) can edit/delete a post
+- ✅ **Privacy enforcement** - Private posts return 404 (not 403) to non-owners to obscure existence
+
+### Performance
+- ✅ **Feed caching** - `GET /feed/` results cached per user+page with version-based invalidation
+- ✅ **Post detail caching** - `GET /posts/{id}/` cached individually; invalidated on write
+- ✅ **Cache invalidation** - Cache automatically busted when posts are created or deleted
+- ✅ **N+1 prevention** - `select_related` / `prefetch_related` / DB `COUNT` annotations throughout
+- ✅ **Pagination** - Feed (10/page, max 100) and comments (10/page, max 100) both paginated
 
 ### Design Patterns
 - ✅ **Factory Pattern** - PostFactory for creating posts with type-specific validation
@@ -79,21 +94,18 @@ The setup script will:
    python manage.py migrate
    ```
 
-5. **Create a superuser (for admin access):**
+6. **Create the admin user (required for Postman tests):**
    ```bash
-   python manage.py createsuperuser
-   ```
-
-6. **Generate authentication token:**
-   ```python
-   python manage.py shell
-   >>> from django.contrib.auth import get_user_model
-   >>> from rest_framework.authtoken.models import Token
-   >>> User = get_user_model()
-   >>> user = User.objects.get(username='your_username')
-   >>> token = Token.objects.create(user=user)
-   >>> print(token.key)
-   >>> exit()
+   python manage.py shell -c "
+   from posts.models import User
+   u, created = User.objects.get_or_create(username='admin')
+   u.set_password('adminpass123')
+   u.role = 'admin'
+   u.is_staff = True
+   u.is_superuser = True
+   u.save()
+   print('Done – id:', u.id)
+   "
    ```
 
 ## 🖥️ Running the Server
@@ -105,14 +117,22 @@ python manage.py runserver
 Server will be available at: `http://127.0.0.1:8000`
 
 ### HTTPS Server (with SSL certificates)
+
+Run from inside the `connectly_project/` directory:
+
 ```bash
-python manage.py runserver_plus --cert-file cert.pem --key-file key.pem
+# Windows (full path to the venv Python)
+c:\Users\jafph\IPT_MS1_IJMR-1\.venv\Scripts\python.exe manage.py runserver_plus 127.0.0.1:8000 --cert-file cert.pem --key-file key.pem
+
+# Mac/Linux
+python manage.py runserver_plus 127.0.0.1:8000 --cert-file cert.pem --key-file key.pem
 ```
+
 Server will be available at: `https://127.0.0.1:8000`
 
-**Note:** For HTTPS with self-signed certificates, you'll need to:
-- Accept the security warning in your browser
-- Disable SSL verification if using Postman or API clients
+> **Important:** If port 8000 is already in use (e.g., a stale HTTP `runserver` process), kill it first — see the Troubleshooting section below.
+
+**Postman / API client:** Disable SSL certificate verification (Postman → Settings → General → SSL certificate verification → OFF) because the bundled certificates are self-signed.
 
 ## 📁 Project Structure
 
@@ -214,67 +234,242 @@ config.set_setting('RATE_LIMIT', 150)
 All authenticated endpoints require: `Authorization: Token <your-token>`
 
 ### Authentication
-- `POST /posts/authenticate/` - Authenticate user (returns success message)
+| Method | Endpoint | Description | Required Role |
+|--------|----------|-------------|---------------|
+| `POST` | `/posts/get-token/` | Obtain auth token (username + password) | — |
+| `POST` | `/posts/authenticate/` | Verify authentication status | Any authenticated |
 
 ### Users
-- `GET /posts/users/` - List all users (Token auth required)
-- `POST /posts/users/` - Create new user (Token auth required)
-- `GET /posts/users/me/` - Get current user profile (Token auth required)
+| Method | Endpoint | Description | Required Role |
+|--------|----------|-------------|---------------|
+| `GET` | `/posts/users/` | List all users | `admin` only |
+| `POST` | `/posts/users/` | Create new user | — (public) |
+| `GET` | `/posts/users/me/` | Get current user profile | Any authenticated |
 
 ### Posts
-- `GET /posts/` - List all posts (Token auth required)
-- `POST /posts/` - Create post via serializer (Token auth required)
-- `POST /posts/create/` - Create post via Factory Pattern (Token auth required)
-- `GET /posts/{id}/` - Get post detail with like_count & comment_count (Token auth required)
+| Method | Endpoint | Description | Required Role |
+|--------|----------|-------------|---------------|
+| `GET` | `/posts/` | List all posts | Any authenticated |
+| `POST` | `/posts/` | Create post (serializer path) | `user` or `admin` (not `guest`) |
+| `POST` | `/posts/create/` | Create post via Factory Pattern | `user` or `admin` (not `guest`) |
+| `GET` | `/posts/{id}/` | Get post detail (cached) | Any authenticated; `private` → author or admin |
+| `PUT/PATCH` | `/posts/{id}/` | Edit post | Author or `admin` |
+| `DELETE` | `/posts/{id}/` | Delete post | Author or `admin` |
 
 ### News Feed
-- `GET /posts/feed/` - Get paginated news feed (newest posts first) (Token auth required)
+| Method | Endpoint | Description | Required Role |
+|--------|----------|-------------|---------------|
+| `GET` | `/posts/feed/` | Paginated feed, newest first, privacy-filtered, cached | Any authenticated |
+
+Query params: `?page=<n>&page_size=<n>` (default 10, max 100)
 
 ### Likes
-- `POST /posts/{id}/like/` - Like a post (Token auth required)
-- `DELETE /posts/{id}/like/` - Unlike a post (Token auth required)
+| Method | Endpoint | Description | Required Role |
+|--------|----------|-------------|---------------|
+| `POST` | `/posts/{id}/like/` | Like a post | `user` or `admin` (not `guest`) |
+| `DELETE` | `/posts/{id}/like/` | Unlike a post | `user` or `admin` (not `guest`) |
 
 ### Comments
-- `POST /posts/{id}/comment/` - Add a comment to a post (Token auth required)
-- `GET /posts/{id}/comments/` - Get all comments for a post, paginated (Token auth required)
-- `GET /posts/comments/` - List all comments (Token auth required)
-- `POST /posts/comments/` - Create comment (Token auth required)
+| Method | Endpoint | Description | Required Role |
+|--------|----------|-------------|---------------|
+| `POST` | `/posts/{id}/comment/` | Add a comment | `user` or `admin` (not `guest`) |
+| `GET` | `/posts/{id}/comments/` | Get paginated comments for a post | Any authenticated |
+| `DELETE` | `/posts/{id}/comment/` | Delete any comment on a post | `admin` only |
+| `GET` | `/posts/comments/` | List all comments | Any authenticated |
+
+Query params for comment pagination: `?page=<n>&page_size=<n>` (default 10, max 100)
 
 ### OAuth
-- `/accounts/*` - Django-allauth endpoints for Google OAuth
+- `/accounts/*` — Django-allauth endpoints for Google OAuth
 ## 📊 Models & Database
 
 ### User Model (Custom)
 Extends Django's `AbstractUser`:
-- `username` - Unique username
-- `email` - Email address
-- `password` - Hashed password
-- `created_at` - Timestamp
-- All default Django user fields
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `username` | CharField | Unique |
+| `email` | EmailField | Optional |
+| `password` | CharField | Hashed (PBKDF2/Argon2/BCrypt) |
+| `role` | CharField | `admin` / `user` / `guest`; default `user` |
+| `created_at` | DateTimeField | Auto-set on creation |
 
 ### Post Model
-- `title` - Post title (max 255 chars)
-- `content` - Post content (text)
-- `post_type` - Choice: 'text', 'image', 'video'
-- `metadata` - JSON field for type-specific data
-- `author` - ForeignKey to User
-- `created_at` - Timestamp
-- Properties: `like_count`, `comment_count`
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `title` | CharField | Max 255 chars |
+| `content` | TextField | Post body |
+| `post_type` | CharField | `text` / `image` / `video` |
+| `privacy` | CharField | `public` / `private`; default `public` |
+| `metadata` | JSONField | Type-specific data (file_size, duration, …) |
+| `author` | ForeignKey | → User |
+| `created_at` | DateTimeField | Auto-set on creation |
+
+Annotated properties (DB level): `like_count`, `comment_count`
 
 ### Comment Model
-- `text` - Comment content
-- `author` - ForeignKey to User
-- `post` - ForeignKey to Post
-- `created_at` - Timestamp
-- Ordering: Newest first
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `text` | TextField | Comment body |
+| `author` | ForeignKey | → User |
+| `post` | ForeignKey | → Post |
+| `created_at` | DateTimeField | Auto-set; ordering newest-first |
 
 ### Like Model
-- `user` - ForeignKey to User
-- `post` - ForeignKey to Post
-- `created_at` - Timestamp
-- Unique constraint: (`user`, `post`) - prevents duplicate likes
 
-## 🧪 Testing
+| Field | Type | Notes |
+|-------|------|-------|
+| `user` | ForeignKey | → User |
+| `post` | ForeignKey | → Post |
+| `created_at` | DateTimeField | Auto-set |
+
+Unique constraint on `(user, post)` — one like per user per post.
+
+## 🛡️ RBAC & Permissions
+
+### Roles
+
+| Role | Description |
+|------|-------------|
+| `admin` | Full access: manage all users, edit/delete any post or comment |
+| `user` | Default role: read/write own content, read all public content |
+| `guest` | Read-only: cannot create posts, comments, or likes |
+
+### Custom Permission Classes (`posts/permissions.py`)
+
+| Class | Rule |
+|-------|------|
+| `IsAdminRole` | Requires `request.user.role == 'admin'` |
+| `IsStaffUser` | Requires `request.user.is_staff` (Django staff flag) |
+| `IsNotGuest` | Blocks users with `role == 'guest'` |
+| `IsAdminOrAuthor` | Allows if admin role **or** the object's author |
+| `IsPostAuthor` | Allows only the post author |
+
+### Permission Matrix
+
+| Action | Guest | User | Admin |
+|--------|-------|------|-------|
+| List users | ✗ | ✗ | ✓ |
+| Read public post | ✓ | ✓ | ✓ |
+| Read own private post | — | ✓ | ✓ |
+| Read other's private post | ✗ (404) | ✗ (404) | ✗ (404) |
+| Create post | ✗ | ✓ | ✓ |
+| Edit own post | ✗ | ✓ | ✓ |
+| Edit any post | ✗ | ✗ | ✓ |
+| Delete own post | ✗ | ✓ | ✓ |
+| Delete any post | ✗ | ✗ | ✓ |
+| Like / comment | ✗ | ✓ | ✓ |
+| Delete any comment | ✗ | ✗ | ✓ |
+
+> **Privacy note:** Private posts return `404 Not Found` (not `403 Forbidden`) to non-owners to avoid revealing that the post exists.
+
+---
+
+## ⚡ Caching
+
+### Backend
+`django.core.cache.backends.locmem.LocMemCache` (in-memory, single-process). Configured in `settings.py`:
+
+```python
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'connectly-cache',
+    }
+}
+CACHE_TTL = 60 * 5  # 5 minutes
+```
+
+### Cached Endpoints
+
+| Endpoint | Cache Key Pattern | TTL |
+|----------|------------------|-----|
+| `GET /posts/{id}/` | `post_detail_{pk}` | 5 min |
+| `GET /posts/feed/` | `news_feed_{uid}_v{ver}_p{page}_s{page_size}` | 5 min |
+
+### Cache Invalidation
+
+Feed caches use a **version counter** per user (`feed_ver_{uid}` key, TTL = 24 h). When a post is created or deleted the version is incremented — all previously cached feed pages for that user become stale automatically without needing to enumerate individual keys.
+
+Invalidation is triggered by:
+- `POST /posts/` — new post created
+- `POST /posts/create/` — new post created via factory
+- `DELETE /posts/{id}/` — post deleted
+
+Post-detail cache is invalidated on every write to that post object.
+
+---
+
+## 📄 Pagination
+
+Both the news feed and comment lists are paginated.
+
+### Classes
+
+| Class | Endpoint | Default page size | Max page size |
+|-------|----------|-------------------|---------------|
+| `NewsFeedPagination` | `GET /posts/feed/` | 10 | 100 |
+| `CommentPagination` | `GET /posts/{id}/comments/` | 10 | 100 |
+
+### Query Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `page` | Page number (1-indexed) | `?page=2` |
+| `page_size` | Results per page (≤ max) | `?page_size=25` |
+
+### Response Structure
+
+```json
+{
+  "count": 42,
+  "next": "https://127.0.0.1:8000/posts/feed/?page=2",
+  "previous": null,
+  "results": [ ... ]
+}
+```
+
+---
+
+## 🧪 Postman Test Suite
+
+The `postman/` directory contains a ready-to-import collection and environment that cover all major features.
+
+### Files
+
+| File | Description |
+|------|-------------|
+| `postman/Connectly_API_Collection.json` | 48 requests across 6 test folders |
+| `postman/Connectly_Environment.json` | Environment variables (base URL, credentials, captured IDs) |
+
+### How to Import
+
+1. Open Postman → **Import** → drag both JSON files in.
+2. Select the **Connectly Environment** in the environment dropdown (top-right).
+3. If using HTTPS: Postman → **Settings → General → SSL certificate verification → OFF**.
+
+### Folder Structure
+
+| Folder | Requests | Purpose |
+|--------|----------|---------|
+| `0. Setup (Run First, In Order)` | 12 | Creates admin/user/user2/guest accounts, obtains tokens, creates seed posts and comments |
+| `1. Authentication` | 2 | Valid credentials → token; invalid credentials → 400 |
+| `2. RBAC` | 15 | Sub-folders: unauthenticated, guest, non-owner, owner, admin — verifies each permission boundary |
+| `3. Privacy Settings` | 5 | Owner sees private post; non-owner gets 404; feed filters private posts |
+| `4. Caching` | 7 | Cold vs warm feed response, cache bust on post detail write, feed invalidation after create |
+| `5. Pagination` | 7 | Default/custom page_size, page 2, out-of-range page, comment pagination |
+
+### Prerequisites
+
+- Django server must be running (see **Running the Server** above).
+- Run the **`0. Setup`** folder **first and in order** before any other folder.
+- The Setup folder uses timestamp-suffixed usernames so it is safe to re-run without conflicts.
+
+---
+
+## 🧪 Unit Tests
 
 The project includes comprehensive test coverage in [posts/tests.py](connectly_project/posts/tests.py):
 

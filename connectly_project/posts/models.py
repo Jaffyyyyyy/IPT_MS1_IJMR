@@ -7,8 +7,31 @@ class User(AbstractUser):
     # We keep created_at for compatibility with existing code
     created_at = models.DateTimeField(auto_now_add=True)
 
+    ROLE_ADMIN = 'admin'
+    ROLE_USER  = 'user'
+    ROLE_GUEST = 'guest'
+    ROLE_CHOICES = [
+        (ROLE_ADMIN, 'Admin'),
+        (ROLE_USER,  'User'),
+        (ROLE_GUEST, 'Guest'),
+    ]
+    role = models.CharField(
+        max_length=10,
+        choices=ROLE_CHOICES,
+        default=ROLE_USER,
+        help_text='Application-level role: admin > user > guest',
+    )
+
+    @property
+    def is_admin_role(self):
+        return self.role == self.ROLE_ADMIN
+
+    @property
+    def is_guest_role(self):
+        return self.role == self.ROLE_GUEST
+
     def __str__(self):
-        return self.username
+        return f'{self.username} ({self.role})'
 
 
 class Post(models.Model):
@@ -17,10 +40,16 @@ class Post(models.Model):
         ('image', 'Image'),
         ('video', 'Video'),
     ]
-    
+
+    PRIVACY_CHOICES = [
+        ('public', 'Public'),
+        ('private', 'Private'),
+    ]
+
     title = models.CharField(max_length=255, default='Untitled')
     content = models.TextField()
     post_type = models.CharField(max_length=20, choices=POST_TYPES, default='text')
+    privacy = models.CharField(max_length=10, choices=PRIVACY_CHOICES, default='public')
     metadata = models.JSONField(default=dict, blank=True)
     author = models.ForeignKey(User, related_name='posts', on_delete=models.CASCADE, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
