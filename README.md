@@ -2,7 +2,7 @@
 
 A Django REST Framework API with Token Authentication, Role-Based Access Control (RBAC), Privacy Settings, Caching, Pagination, Factory Pattern, Singleton design patterns, OAuth support, and User Interaction features (Likes & Comments).
 
-> **🤖 AI Disclosure:** This README file was created using AI assistance. The rest of the codebase was developed without AI assistance.
+> **🤖 AI Disclosure:** This README file, some comments, and some testing were created with little to no AI assistance. The rest of the codebase was developed independently without AI assistance.
 
 ## ✨ Features
 
@@ -527,18 +527,18 @@ Both the news feed and comment lists are paginated.
 
 ## 🧪 Postman Test Suite
 
-The `postman/` directory contains a ready-to-import collection and environment that cover all major features.
+The collection and environment files are provided separately (not inside the repository). Obtain them from the shared Google Drive folder in the Terminal Assessment submission.
 
 ### Files
 
 | File | Description |
 |------|-------------|
-| `postman/Connectly_API_Collection.json` | 98 requests across 13 test folders (includes Google OAuth tests in folder 12) |
-| `postman/Connectly_Environment.json` | Environment variables (base URL, credentials, captured IDs) |
+| `Connectly_API_Collection.json` | 98 requests across 13 test folders (includes Google OAuth tests in folder 12) |
+| `Connectly_Environment.json` | Environment variables (base URL, credentials, captured IDs) |
 
 ### How to Import
 
-1. Open Postman → **Import** → drag both JSON files in.
+1. Download both files from the shared Google Drive folder, then open Postman → **Import** → drag both JSON files in.
 2. Select the **Connectly Environment** in the environment dropdown (top-right).
 3. If using HTTPS: Postman → **Settings → General → SSL certificate verification → OFF**.
 
@@ -817,7 +817,7 @@ The `response.credential` value is the Google ID token.
 
 ### Step 8 — Test with Postman
 
-1. Import `Connectly_API_Collection.json` and `Connectly_Environment.json` into Postman.
+1. Download `Connectly_API_Collection.json` and `Connectly_Environment.json` from the shared Google Drive folder, then import both into Postman.
 2. In the **Connectly Environment**, set the `google_id_token` variable to the ID token obtained in Step 7.
 3. Open folder **`12. Google OAuth`** in the collection.
 4. Run the **"Valid token → 200 + save DRF token"** request — on success it saves the returned DRF token to `{{google_user_token}}` automatically.
