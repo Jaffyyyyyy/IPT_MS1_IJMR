@@ -7,7 +7,7 @@
       "value": "https://127.0.0.1:8000",
       "type": "default",
       "enabled": true,
-      "description": "Django dev server base URL. Change to https:// if SSL is enabled."
+      "description": "Django dev server base URL. Uses HTTPS via runserver_plus with self-signed cert. Disable SSL verification in Postman Settings → General."
     },
     {
       "key": "admin_username",
