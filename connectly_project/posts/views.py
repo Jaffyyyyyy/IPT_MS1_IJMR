@@ -3,21 +3,22 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from django.core.cache import cache
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate
 from django.db import IntegrityError
+from django.db.models import Q, Count
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.authtoken.models import Token
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.pagination import PageNumberPagination
 from .models import Post, Comment, User, Like
-from .serializers import UserSerializer, PostSerializer, PostFeedSerializer, CommentSerializer, LikeSerializer
+from .serializers import (
+    UserSerializer, PostSerializer, PostDetailSerializer,
+    PostFeedSerializer, CommentSerializer, LikeSerializer,
+)
 from .permissions import (
-    IsPostAuthor, IsAdminOrReadOnly, IsStaffUser,
     IsAdminRole, IsAdminOrAuthor, IsNotGuest,
 )
 from singletons.logger_singleton import LoggerSingleton
@@ -25,6 +26,9 @@ from singletons.config_manager import ConfigManager
 from factories.post_factory import PostFactory
 
 CACHE_TTL = 60 * 5  # 5 minutes
+
+logger = LoggerSingleton().get_logger()
+logger.info("API initialized successfully.")
 
 
 # ---------------------------------------------------------------------------
@@ -56,79 +60,40 @@ def invalidate_feed_cache(user_id: int) -> None:
     u_key = f'feed_ver_{user_id}'
     u = cache.get(u_key, 0)
     cache.set(u_key, u + 1, CACHE_TTL * 288)
-    logger.debug(f"Feed cache invalidated (global → {g + 1}, user {user_id} → {u + 1})")
+    logger.debug(
+        "Feed cache invalidated (global → %s, user %s → %s)",
+        g + 1, user_id, u + 1,
+    )
 
 
-logger = LoggerSingleton().get_logger()
-logger.info("API initialized successfully.")
+class AuthenticateUserView(APIView):
+    """
+    POST /posts/authenticate/ — verify credentials without issuing a token.
+    Open to unauthenticated callers.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
-def get_users(request):
-    try:
-        users = list(User.objects.values('id', 'username', 'email', 'created_at'))
-        logger.info(f"Retrieved {len(users)} users")
-        return JsonResponse(users, safe=False)
-    except Exception as e:
-        logger.error(f"Error retrieving users: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=500)
-
-@csrf_exempt
-def create_user(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            user = User.objects.create_user(username=data['username'], password=data.get('password', 'secure_pass123'), email=data.get('email', ''))
-            logger.info(f"User created successfully: {user.username}")
-            return JsonResponse({'id': user.id, 'username': user.username, 'message': 'User created successfully'}, status=201)
-        except Exception as e:
-            logger.error(f"Error creating user: {str(e)}")
-            return JsonResponse({'error': str(e)}, status=400)
-
-@csrf_exempt
-def authenticate_user(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            user = authenticate(username=data['username'], password=data['password'])
-            if user is not None:
-                logger.info(f"Authentication successful for user: {user.username}")
-                return JsonResponse({'message': 'Authentication successful!', 'username': user.username}, status=200)
-            else:
-                logger.warning(f"Invalid credentials attempt for username: {data.get('username', 'unknown')}")
-                return JsonResponse({'message': 'Invalid credentials.'}, status=401)
-        except Exception as e:
-            logger.error(f"Error during authentication: {str(e)}")
-            return JsonResponse({'error': str(e)}, status=400)
-
-def get_posts(request):
-    try:
-        posts = list(Post.objects.values('id', 'content', 'author', 'created_at'))
-        logger.info(f"Retrieved {len(posts)} posts")
-        return JsonResponse(posts, safe=False)
-    except Exception as e:
-        logger.error(f"Error retrieving posts: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=500)
-
-@csrf_exempt
-def create_post(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            author = User.objects.get(id=data['author'])
-            post = Post.objects.create(content=data['content'], author=author)
-            logger.info(f"Post created successfully by user {author.username}: Post ID {post.id}")
-            return JsonResponse({'id': post.id, 'message': 'Post created successfully'}, status=201)
-        except User.DoesNotExist:
-            logger.error(f"Author not found with ID: {data.get('author', 'unknown')}")
-            return JsonResponse({'error': 'Author not found'}, status=404)
-        except Exception as e:
-            logger.error(f"Error creating post: {str(e)}")
-            return JsonResponse({'error': str(e)}, status=400)
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        if not username or not password:
+            return Response({'error': 'username and password are required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        user = authenticate(username=username, password=password)
+        if user is not None:
+            logger.info("Authentication successful for user: %s", user.username)
+            return Response({'message': 'Authentication successful!',
+                            'username': user.username}, status=status.HTTP_200_OK)
+        logger.warning("Invalid credentials attempt for username: %s", username)
+        return Response({'message': 'Invalid credentials.'},
+                        status=status.HTTP_401_UNAUTHORIZED)
 
 
 class UserListCreate(APIView):
     authentication_classes = [TokenAuthentication]
-    # Listing and creating users is restricted to staff only (RBAC)
-    permission_classes = [IsStaffUser]
+    # Listing and creating users is restricted to admin role only (RBAC)
+    permission_classes = [IsAdminRole]
 
     def get(self, request):
         users = User.objects.all()
@@ -139,7 +104,7 @@ class UserListCreate(APIView):
     def post(self, request):
         username = request.data.get('username')
         email = request.data.get('email', '')
-        password = request.data.get('password', 'secure_pass123')
+        password = request.data.get('password')
         role = request.data.get('role', 'user')  # default to 'user'
 
         if not username:
@@ -150,15 +115,18 @@ class UserListCreate(APIView):
         if role not in valid_roles:
             return Response({'error': f'Invalid role. Must be one of: {valid_roles}'}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not password:
+            return Response({'error': 'Password is required'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             user = User.objects.create_user(username=username, email=email, password=password)
             user.role = role
             user.save(update_fields=['role'])
-            logger.info(f"User created via API: {user.username} (role={role})")
+            logger.info("User created via API: %s (role=%s)", user.username, role)
             serializer = UserSerializer(user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         except Exception as e:
-            logger.error(f"Error creating user via API: {str(e)}")
+            logger.error("Error creating user via API: %s", e)
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -168,15 +136,32 @@ class PostListCreate(APIView):
 
     def get(self, request):
         # Privacy: only show public posts OR the user's own private posts.
-        # select_related prevents N+1 on author; prefetch_related on likes/comments
-        # avoids extra queries when rendering like_count / comment_count.
-        from django.db.models import Q
+        # select_related prevents N+1 on author; DB-level Count annotations resolve
+        # like_count / comment_count in a single aggregated query instead of
+        # issuing per-object COUNT calls through the @property on the model.
         posts = (
             Post.objects
             .filter(Q(privacy='public') | Q(author=request.user))
             .select_related('author')
-            .prefetch_related('likes', 'comments')
+            .annotate(
+                annotated_like_count=Count('likes', distinct=True),
+                annotated_comment_count=Count('comments', distinct=True),
+            )
         )
+
+        # Optional search / filter via query params
+        search = request.query_params.get('search')
+        post_type = request.query_params.get('post_type')
+        privacy = request.query_params.get('privacy')
+        if search:
+            posts = posts.filter(
+                Q(title__icontains=search) | Q(content__icontains=search)
+            )
+        if post_type:
+            posts = posts.filter(post_type=post_type)
+        if privacy:
+            posts = posts.filter(privacy=privacy)
+
         serializer = PostSerializer(posts, many=True)
         return Response(serializer.data)
 
@@ -185,11 +170,12 @@ class PostListCreate(APIView):
         # IsNotGuest already blocks guest writes at the view level
         serializer = PostSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            # Prevent author spoofing: author always comes from the auth token.
+            serializer.save(author=request.user)
             invalidate_feed_cache(request.user.id)
-            logger.info(f"Post created via API by user: {request.user.username}")
+            logger.info("Post created via API by user: %s", request.user.username)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        logger.warning(f"Invalid post data: {serializer.errors}")
+        logger.warning("Invalid post data: %s", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -210,16 +196,16 @@ class CommentListCreate(APIView):
             post_id = request.data.get('post')
             post = Post.objects.get(pk=post_id)
         except (Post.DoesNotExist, TypeError):
-            logger.error(f"Post not found or invalid post ID in comment creation")
+            logger.error("Post not found or invalid post ID in comment creation")
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
         
         serializer = CommentSerializer(data=request.data)
         if serializer.is_valid():
             # Set author from authenticated user
             serializer.save(author=request.user, post=post)
-            logger.info(f"Comment created via API by user: {request.user.username}")
+            logger.info("Comment created via API by user: %s", request.user.username)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        logger.warning(f"Invalid comment data: {serializer.errors}")
+        logger.warning("Invalid comment data: %s", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -246,7 +232,10 @@ class CreatePostView(APIView):
                 author=request.user,
                 privacy=data.get('privacy', 'public')
             )
-            logger.info(f"Post created successfully using Factory by user {request.user.username}: Post ID {post.id}")
+            logger.info(
+                "Post created successfully using Factory by user %s: Post ID %s",
+                request.user.username, post.id,
+            )
             return Response({
                 'message': 'Post created successfully!',
                 'post_id': post.id,
@@ -255,21 +244,24 @@ class CreatePostView(APIView):
                 'title': post.title
             }, status=status.HTTP_201_CREATED)
         except KeyError as e:
-            logger.warning(f"Missing required field in post creation: {str(e)}")
+            logger.warning("Missing required field in post creation: %s", e)
             return Response({'error': f'Missing required field: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
         except ValueError as e:
-            logger.warning(f"Validation error in post creation: {str(e)}")
+            logger.warning("Validation error in post creation: %s", e)
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            logger.error(f"Error creating post via Factory: {str(e)}")
+            logger.error("Error creating post via Factory: %s", e)
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class CommentPagination(PageNumberPagination):
-    """Custom pagination class for comments"""
-    page_size = 10
+class StandardPagination(PageNumberPagination):
+    """Shared pagination settings for all list endpoints."""
+    page_size = ConfigManager().get_setting('DEFAULT_PAGE_SIZE')
     page_size_query_param = 'page_size'
     max_page_size = 100
+
+
+CommentPagination = StandardPagination
 
 
 class LikePostView(APIView):
@@ -279,19 +271,19 @@ class LikePostView(APIView):
     Prevents duplicate likes using unique_together constraint.
     """
     authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNotGuest]
 
     def post(self, request, pk):
         try:
             post = Post.objects.get(pk=pk)
         except Post.DoesNotExist:
-            logger.error(f"Post not found with ID: {pk}")
+            logger.error("Post not found with ID: %s", pk)
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             # Create like
             like = Like.objects.create(user=request.user, post=post)
-            logger.info(f"User {request.user.username} liked post {pk}")
+            logger.info("User %s liked post %s", request.user.username, pk)
             serializer = LikeSerializer(like)
             return Response({
                 'message': 'Post liked successfully',
@@ -299,13 +291,16 @@ class LikePostView(APIView):
             }, status=status.HTTP_201_CREATED)
         except IntegrityError:
             # User already liked this post
-            logger.warning(f"User {request.user.username} attempted to like post {pk} again")
+            logger.warning(
+                "User %s attempted to like post %s again",
+                request.user.username, pk,
+            )
             return Response(
                 {'error': 'You have already liked this post'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
-            logger.error(f"Error liking post {pk}: {str(e)}")
+            logger.error("Error liking post %s: %s", pk, e)
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def delete(self, request, pk):
@@ -315,22 +310,25 @@ class LikePostView(APIView):
         try:
             post = Post.objects.get(pk=pk)
         except Post.DoesNotExist:
-            logger.error(f"Post not found with ID: {pk}")
+            logger.error("Post not found with ID: %s", pk)
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
         try:
             like = Like.objects.get(user=request.user, post=post)
             like.delete()
-            logger.info(f"User {request.user.username} unliked post {pk}")
+            logger.info("User %s unliked post %s", request.user.username, pk)
             return Response({'message': 'Post unliked successfully'}, status=status.HTTP_200_OK)
         except Like.DoesNotExist:
-            logger.warning(f"User {request.user.username} tried to unlike post {pk} but hasn't liked it")
+            logger.warning(
+                "User %s tried to unlike post %s but hasn't liked it",
+                request.user.username, pk,
+            )
             return Response(
                 {'error': 'You have not liked this post'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
-            logger.error(f"Error unliking post {pk}: {str(e)}")
+            logger.error("Error unliking post %s: %s", pk, e)
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -340,19 +338,13 @@ class CommentOnPostView(APIView):
     DELETE /posts/{id}/comment/{comment_id}  — admin may delete any comment.
     """
     authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsNotGuest]
 
     def post(self, request, pk):
-        # Guests cannot write comments
-        if request.user.role == 'guest':
-            return Response(
-                {'error': 'Guest users do not have write access.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
         try:
             post = Post.objects.get(pk=pk)
         except Post.DoesNotExist:
-            logger.error(f"Post not found with ID: {pk}")
+            logger.error("Post not found with ID: %s", pk)
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
         # Add post and author to request data
@@ -363,25 +355,28 @@ class CommentOnPostView(APIView):
         serializer = CommentSerializer(data=data)
         if serializer.is_valid():
             comment = serializer.save(author=request.user, post=post)
-            logger.info(f"User {request.user.username} commented on post {pk}")
+            logger.info("User %s commented on post %s", request.user.username, pk)
             return Response({
                 'message': 'Comment added successfully',
                 'comment': CommentSerializer(comment).data
             }, status=status.HTTP_201_CREATED)
 
-        logger.warning(f"Invalid comment data from user {request.user.username}: {serializer.errors}")
+        logger.warning(
+            "Invalid comment data from user %s: %s",
+            request.user.username, serializer.errors,
+        )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def get_permissions(self):
+        if self.request.method == 'DELETE':
+            return [IsAuthenticated(), IsAdminRole()]
+        return [IsAuthenticated(), IsNotGuest()]
 
     def delete(self, request, pk):
         """
         Admin-only: delete any comment on this post.
         DELETE /posts/{id}/comment/?comment_id={id}
         """
-        if request.user.role != 'admin':
-            return Response(
-                {'error': 'Only admin users can delete comments.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
         comment_id = request.query_params.get('comment_id')
         if not comment_id:
             return Response({'error': 'comment_id query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -390,7 +385,10 @@ class CommentOnPostView(APIView):
         except Comment.DoesNotExist:
             return Response({'error': 'Comment not found.'}, status=status.HTTP_404_NOT_FOUND)
         comment.delete()
-        logger.info(f"Admin {request.user.username} deleted comment {comment_id} on post {pk}")
+        logger.info(
+            "Admin %s deleted comment %s on post %s",
+            request.user.username, comment_id, pk,
+        )
         return Response({'message': 'Comment deleted successfully.'}, status=status.HTTP_200_OK)
 
 
@@ -407,7 +405,7 @@ class PostCommentsView(APIView):
         try:
             post = Post.objects.get(pk=pk)
         except Post.DoesNotExist:
-            logger.error(f"Post not found with ID: {pk}")
+            logger.error("Post not found with ID: %s", pk)
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
         # select_related prevents N+1 on author and post in CommentSerializer
@@ -419,7 +417,7 @@ class PostCommentsView(APIView):
             paginated_comments = paginator.paginate_queryset(comments, request)
         except Exception:
             # If page is out of range, return empty results
-            logger.info(f"Page out of range for post {pk}, returning empty results")
+            logger.info("Page out of range for post %s, returning empty results", pk)
             return Response({
                 'count': comments.count(),
                 'next': None,
@@ -428,7 +426,7 @@ class PostCommentsView(APIView):
             })
         
         serializer = CommentSerializer(paginated_comments, many=True)
-        logger.info(f"Retrieved {len(serializer.data)} comments for post {pk}")
+        logger.info("Retrieved %s comments for post %s", len(serializer.data), pk)
         
         return paginator.get_paginated_response(serializer.data)
 
@@ -448,36 +446,32 @@ class PostDetailView(APIView):
         cache_key = f'post_detail_{pk}'
         cached = cache.get(cache_key)
         if cached is not None:
-            logger.info(f"Cache hit for post {pk}")
+            logger.info("Cache hit for post %s", pk)
             # Privacy check: private posts only visible to author
             if cached.get('privacy') == 'private' and cached.get('author') != request.user.id:
                 return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
             return Response(cached)
 
         try:
-            post = Post.objects.get(pk=pk)
+            post = (
+                Post.objects
+                .select_related('author')
+                .annotate(
+                    annotated_like_count=Count('likes', distinct=True),
+                    annotated_comment_count=Count('comments', distinct=True),
+                )
+                .get(pk=pk)
+            )
         except Post.DoesNotExist:
-            logger.error(f"Post not found with ID: {pk}")
+            logger.error("Post not found with ID: %s", pk)
             return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
 
         # Privacy: private posts only visible to their author
         if post.privacy == 'private' and post.author != request.user:
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        logger.info(f"User {request.user.username} accessed post {pk}")
-        data = {
-            'id': post.id,
-            'title': post.title,
-            'content': post.content,
-            'post_type': post.post_type,
-            'privacy': post.privacy,
-            'metadata': post.metadata,
-            'author': post.author.id if post.author else None,
-            'author_username': post.author.username if post.author else None,
-            'created_at': str(post.created_at),
-            'like_count': post.like_count,
-            'comment_count': post.comment_count
-        }
+        logger.info("User %s accessed post %s", request.user.username, pk)
+        data = PostDetailSerializer(post).data
         cache.set(cache_key, data, CACHE_TTL)
         return Response(data)
 
@@ -493,7 +487,8 @@ class PostDetailView(APIView):
         if serializer.is_valid():
             serializer.save()
             cache.delete(f'post_detail_{pk}')
-            logger.info(f"Post {pk} updated by {request.user.username}")
+            invalidate_feed_cache(request.user.id)
+            logger.info("Post %s updated by %s", pk, request.user.username)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -509,7 +504,8 @@ class PostDetailView(APIView):
         if serializer.is_valid():
             serializer.save()
             cache.delete(f'post_detail_{pk}')
-            logger.info(f"Post {pk} patched by {request.user.username}")
+            invalidate_feed_cache(request.user.id)
+            logger.info("Post %s patched by %s", pk, request.user.username)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -524,7 +520,7 @@ class PostDetailView(APIView):
         post.delete()
         cache.delete(f'post_detail_{pk}')
         invalidate_feed_cache(request.user.id)
-        logger.info(f"Post {pk} deleted by {request.user.username}")
+        logger.info("Post %s deleted by %s", pk, request.user.username)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_permissions(self):
@@ -534,7 +530,8 @@ class PostDetailView(APIView):
 
 class AuthenticatedUserProfileView(APIView):
     """
-    GET /posts/users/me/  — returns the authenticated user's profile including their role.
+    GET  /posts/users/me/ — returns the authenticated user's profile.
+    PATCH /posts/users/me/ — update the authenticated user's own profile fields.
     """
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -543,12 +540,16 @@ class AuthenticatedUserProfileView(APIView):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
 
+    def patch(self, request):
+        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            logger.info("User %s updated their profile", request.user.username)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class NewsFeedPagination(PageNumberPagination):
-    """Custom pagination for the news feed"""
-    page_size = 10
-    page_size_query_param = 'page_size'
-    max_page_size = 100
+
+NewsFeedPagination = StandardPagination
 
 
 class NewsFeedView(APIView):
@@ -563,8 +564,6 @@ class NewsFeedView(APIView):
     pagination_class = NewsFeedPagination
 
     def get(self, request):
-        from django.db.models import Q, Count
-
         page = request.query_params.get('page', 1)
         page_size = request.query_params.get('page_size', NewsFeedPagination.page_size)
         # Compound version (global + per-user) ensures that a public post
@@ -574,7 +573,10 @@ class NewsFeedView(APIView):
 
         cached = cache.get(cache_key)
         if cached is not None:
-            logger.info(f"Cache hit for news feed (user={request.user.id}, page={page}, ver={ver})")
+            logger.info(
+                "Cache hit for news feed (user=%s, page=%s, ver=%s)",
+                request.user.id, page, ver,
+            )
             return Response(cached)
 
         # Privacy: public posts + own private posts.
@@ -607,7 +609,10 @@ class NewsFeedView(APIView):
         # PostFeedSerializer omits the nested comments list — only counts are served,
         # which avoids serialising potentially hundreds of comments per post.
         serializer = PostFeedSerializer(paginated_posts, many=True)
-        logger.info(f"Retrieved {len(serializer.data)} posts for news feed (user={request.user.id}, page={page})")
+        logger.info(
+            "Retrieved %s posts for news feed (user=%s, page=%s)",
+            len(serializer.data), request.user.id, page,
+        )
         response = paginator.get_paginated_response(serializer.data)
         cache.set(cache_key, response.data, CACHE_TTL)
         return response
@@ -664,7 +669,7 @@ class GoogleLoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         if 'error' in google_info:
-            logger.warning(f"Google OAuth: token error – {google_info['error']}")
+            logger.warning("Google OAuth: token error – %s", google_info['error'])
             return Response(
                 {'error': 'Invalid or expired Google token.'},
                 status=status.HTTP_401_UNAUTHORIZED,
@@ -703,8 +708,8 @@ class GoogleLoginView(APIView):
         token_obj, _ = Token.objects.get_or_create(user=user)
 
         logger.info(
-            f"Google OAuth login: user={user.username} email={email} "
-            f"created={created}"
+            "Google OAuth login: user=%s email=%s created=%s",
+            user.username, email, created,
         )
         return Response(
             {
@@ -739,7 +744,7 @@ class GoogleLoginView(APIView):
                 payload = {'error': str(exc)}
             return payload
         except Exception as exc:
-            logger.error(f"Google tokeninfo request failed: {exc}")
+            logger.error("Google tokeninfo request failed: %s", exc)
             return None
 
     @staticmethod

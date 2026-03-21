@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "connectly-api-full-suite-v2",
     "name": "Connectly API – Full Test Suite",
-    "description": "Verifies RBAC, Privacy Settings, Caching, and Pagination for all Connectly endpoints.\n\n## Prerequisites\n1. Django dev server running at `{{base_url}}` (default `http://127.0.0.1:8000`).\n2. If `SECURE_SSL_REDIRECT = True` causes 301 redirects, set it to `False` in settings.py for local dev.\n3. `{{admin_username}}` / `{{admin_password}}` must belong to a user whose **role is `admin`**. Create the superuser via `python manage.py createsuperuser`, then set `role = admin` in the Django admin panel (`/admin/`).\n4. Import **Connectly_Environment.json**, select it, fill in `admin_username` and `admin_password`.\n5. Run folder **0. Setup** fully in order before executing any other folder. Each subsequent folder is independent after setup.\n\n## Endpoint Reference\n| Method | URL | Auth | Permission | Purpose |\n|--------|-----|------|------------|---------|\n| POST | /auth/token/ | None | Public | Obtain DRF auth token |\n| GET | /posts/users/ | Token | role=admin | List all users |\n| POST | /posts/users/ | Token | role=admin | Create user with role |\n| GET | /posts/users/me/ | Token | Authenticated | Own profile |\n| GET | /posts/feed/ | Token | Authenticated | Paginated + cached news feed |\n| GET | /posts/ | Token | Authenticated, non-guest | List posts (privacy-filtered) |\n| POST | /posts/ | Token | Authenticated, non-guest | Create post |\n| POST | /posts/create/ | Token | Authenticated, non-guest | Create post via Factory |\n| GET | /posts/{id}/ | Token | Authenticated | Post detail (cached, privacy) |\n| PATCH | /posts/{id}/ | Token | Admin or Author | Partial update post |\n| PUT | /posts/{id}/ | Token | Admin or Author | Full update post |\n| DELETE | /posts/{id}/ | Token | Admin or Author | Delete post |\n| POST | /posts/{id}/like/ | Token | Authenticated | Like a post |\n| DELETE | /posts/{id}/like/ | Token | Authenticated | Unlike a post |\n| POST | /posts/{id}/comment/ | Token | Authenticated, non-guest | Add comment |\n| DELETE | /posts/{id}/comment/?comment_id= | Token | role=admin | Delete any comment |\n| GET | /posts/{id}/comments/ | Token | Authenticated | Paginated comments for a post |",
+    "description": "Comprehensive test suite verifying Authentication, RBAC, Privacy, Caching, Pagination, Likes, Post CRUD, Comments, Post Factory, User Management, Legacy Auth, and Google OAuth for all Connectly API endpoints.\n\n## Prerequisites\n1. Django dev server running at `{{base_url}}` (default `http://127.0.0.1:8000`).\n2. If `SECURE_SSL_REDIRECT = True` causes 301 redirects, set it to `False` in settings.py for local dev.\n3. `{{admin_username}}` / `{{admin_password}}` must belong to a user whose **role is `admin`**. Create the superuser via `python manage.py createsuperuser`, then set `role = admin` in the Django admin panel (`/admin/`).\n4. Import **Connectly_Environment.json**, select it, fill in `admin_username` and `admin_password`.\n5. Run folder **0. Setup** fully in order before executing any other folder. Each subsequent folder is independent after setup.\n\n## Test Folders\n| # | Folder | Tests |\n|---|--------|-------|\n| 0 | Setup | Creates users (admin, user, user2, guest), obtains tokens, seeds fixture data |\n| 1 | Authentication | Token endpoint – valid/invalid credentials |\n| 2 | RBAC | Unauthenticated, Guest, Non-owner, Owner, Admin permission tiers |\n| 3 | Privacy | Private/public post visibility in detail and feed views |\n| 4 | Caching | Cold/warm cache, post-detail and feed cache invalidation |\n| 5 | Pagination | Feed and comment pagination (default, custom, multi-page, out-of-range) |\n| 6 | Likes | Like, duplicate prevention, unlike, unlike-not-liked, unauthenticated, 404 |\n| 7 | Post CRUD | List, create (direct), PUT, DELETE, admin delete, unauthenticated, guest |\n| 8 | Comments | Global list/create, validation (empty text), missing comment_id, 404 |\n| 9 | Post Factory | Text/image/video types, metadata validation, invalid type, missing title |\n| 10 | User Profiles | Admin/guest/unauthenticated profiles, invalid user creation |\n| 11 | Legacy Auth | /posts/authenticate/ valid/invalid credentials |\n| 12 | Google OAuth | Missing/empty/invalid token errors, manual valid-token test |\n\n## Endpoint Reference\n| Method | URL | Auth | Permission | Purpose |\n|--------|-----|------|------------|---------|\n| POST | /auth/token/ | None | Public | Obtain DRF auth token |\n| POST | /auth/google/login | None | Public | Exchange Google ID token for API token |\n| GET | /posts/users/ | Token | role=admin | List all users |\n| POST | /posts/users/ | Token | role=admin | Create user with role |\n| GET | /posts/users/me/ | Token | Authenticated | Own profile |\n| PATCH | /posts/users/me/ | Token | Authenticated | Update own profile |\n| GET | /posts/feed/ | Token | Authenticated | Paginated + cached news feed |\n| GET | /posts/ | Token | Authenticated, non-guest | List posts (privacy-filtered) |\n| POST | /posts/ | Token | Authenticated, non-guest | Create post |\n| POST | /posts/create/ | Token | Authenticated, non-guest | Create post via Factory |\n| GET | /posts/{id}/ | Token | Authenticated | Post detail (cached, privacy) |\n| PATCH | /posts/{id}/ | Token | Admin or Author | Partial update post |\n| PUT | /posts/{id}/ | Token | Admin or Author | Full update post |\n| DELETE | /posts/{id}/ | Token | Admin or Author | Delete post |\n| POST | /posts/{id}/like/ | Token | Authenticated | Like a post |\n| DELETE | /posts/{id}/like/ | Token | Authenticated | Unlike a post |\n| POST | /posts/{id}/comment/ | Token | Authenticated, non-guest | Add comment |\n| DELETE | /posts/{id}/comment/?comment_id= | Token | role=admin | Delete any comment |\n| GET | /posts/{id}/comments/ | Token | Authenticated | Paginated comments for a post |\n| GET | /posts/comments/ | Token | Authenticated | Global comment list |\n| POST | /posts/comments/ | Token | Authenticated | Create comment (global) |\n| POST | /posts/authenticate/ | None | Public | Legacy authentication check |",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -1645,7 +1645,7 @@
 
     {
       "name": "5. Pagination",
-      "description": "Verifies NewsFeedPagination (page_size=10, max=100) and CommentPagination (page_size=10, max=100). Tests cover: default page, custom page_size, multi-page navigation, out-of-range pages, and paginated comment listing.",
+      "description": "Verifies NewsFeedPagination (page_size=20, max=100) and CommentPagination (page_size=20, max=100). Tests cover: default page, custom page_size, multi-page navigation, out-of-range pages, and paginated comment listing.",
       "item": [
 
         {
@@ -1685,7 +1685,7 @@
         },
 
         {
-          "name": "Feed – Default Page (≤ 10 results, paginated structure)",
+          "name": "Feed – Default Page (≤ 20 results, paginated structure)",
           "event": [
             {
               "listen": "test",
@@ -1702,8 +1702,8 @@
                   "    pm.expect(j).to.have.property('previous');",
                   "    pm.expect(j).to.have.property('results').that.is.an('array');",
                   "});",
-                  "pm.test('Default page returns at most 10 items', function () {",
-                  "    pm.expect(pm.response.json().results.length).to.be.at.most(10);",
+                  "pm.test('Default page returns at most 20 items', function () {",
+                  "    pm.expect(pm.response.json().results.length).to.be.at.most(20);",
                   "});",
                   "pm.test('Feed items have expected fields', function () {",
                   "    var results = pm.response.json().results;",
@@ -1726,7 +1726,7 @@
               "host": ["{{base_url}}"],
               "path": ["posts", "feed", ""]
             },
-            "description": "NewsFeedPagination.page_size = 10. The feed uses PostFeedSerializer which deliberately omits the nested 'comments' array to avoid over-fetching. like_count and comment_count come from DB-level COUNT annotations."
+            "description": "NewsFeedPagination.page_size = 20 (driven by ConfigManager.DEFAULT_PAGE_SIZE). The feed uses PostFeedSerializer which deliberately omits the nested 'comments' array to avoid over-fetching. like_count and comment_count come from DB-level COUNT annotations."
           },
           "response": []
         },
@@ -1877,7 +1877,7 @@
               "host": ["{{base_url}}"],
               "path": ["posts", "{{test_post_id}}", "comments", ""]
             },
-            "description": "GET /posts/{id}/comments/ uses CommentPagination (page_size=10). The view returns count/next/previous/results. Count must be >= 1 (setup added at least comment2, since comment1 was deleted in RBAC)."
+            "description": "GET /posts/{id}/comments/ uses CommentPagination (page_size=20, driven by ConfigManager.DEFAULT_PAGE_SIZE). The view returns count/next/previous/results. Count must be >= 1 (setup added at least comment2, since comment1 was deleted in RBAC)."
           },
           "response": []
         },
@@ -1979,6 +1979,1663 @@
               ]
             },
             "description": "Setup added 2 comments to test_post (comment1 deleted in RBAC, comment2 remains plus any others). With page_size=1 and count >= 2, page 2 must exist with a 'previous' link."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "6. Likes (Like / Unlike Workflow)",
+      "description": "Exercises the full like lifecycle: like a post, duplicate like prevention (unique_together), unlike, unlike-when-not-liked error, and unauthenticated access.",
+      "item": [
+
+        {
+          "name": "Fixture – Create Post for Like Tests",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 – fixture post for like tests created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.environment.set('like_test_post_id', String(pm.response.json().post_id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Like Test Post\", \"content\": \"Post for testing like/unlike.\", \"post_type\": \"text\", \"privacy\": \"public\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/create/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "create", ""]
+            },
+            "description": "Dedicated post to isolate like/unlike tests from other fixtures."
+          },
+          "response": []
+        },
+
+        {
+          "name": "User → Like Post → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 – post liked successfully', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.message).to.include('liked');",
+                  "    pm.expect(j.like).to.be.an('object');",
+                  "    pm.expect(j.like).to.have.property('id');",
+                  "    pm.expect(j.like).to.have.property('user');",
+                  "    pm.expect(j.like).to.have.property('post');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user2_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{like_test_post_id}}/like/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{like_test_post_id}}", "like", ""]
+            },
+            "description": "POST /posts/{id}/like/ creates a Like object linking the authenticated user to the post. Returns 201 with the serialized like data."
+          },
+          "response": []
+        },
+
+        {
+          "name": "User → Like Same Post Again (Duplicate) → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – duplicate like prevented', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('already liked');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user2_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{like_test_post_id}}/like/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{like_test_post_id}}", "like", ""]
+            },
+            "description": "The Like model has unique_together = ('user', 'post'). Attempting a second like by the same user on the same post raises IntegrityError, caught and returned as 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Verify Like Count Increased on Post Detail",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – post detail returned', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('like_count is at least 1', function () {",
+                  "    pm.expect(pm.response.json().like_count).to.be.at.least(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{like_test_post_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{like_test_post_id}}", ""]
+            },
+            "description": "After liking, the post's like_count (derived from likes.count()) must reflect the new like."
+          },
+          "response": []
+        },
+
+        {
+          "name": "User → Unlike Post → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – post unliked successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().message).to.include('unliked');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user2_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{like_test_post_id}}/like/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{like_test_post_id}}", "like", ""]
+            },
+            "description": "DELETE /posts/{id}/like/ removes the Like object for the authenticated user. Returns 200 with a success message."
+          },
+          "response": []
+        },
+
+        {
+          "name": "User → Unlike When Not Liked → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – cannot unlike a post you have not liked', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('not liked');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user2_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{like_test_post_id}}/like/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{like_test_post_id}}", "like", ""]
+            },
+            "description": "If no Like record exists for this user+post pair, Like.DoesNotExist is caught and returned as 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "No Token → Like → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 – liking requires authentication', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/posts/{{like_test_post_id}}/like/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{like_test_post_id}}", "like", ""]
+            },
+            "description": "LikePostView has permission_classes = [IsAuthenticated]. Without a valid token the request must be rejected."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Guest → Like Post → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 – guest cannot like a post', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{guest_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{like_test_post_id}}/like/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{like_test_post_id}}", "like", ""]
+            },
+            "description": "LikePostView has permission_classes = [IsAuthenticated, IsNotGuest]. Guests are blocked from write actions and receive 403."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Like Non-Existent Post → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 – cannot like a non-existent post', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error).to.include('not found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/99999/like/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "99999", "like", ""]
+            },
+            "description": "If Post.objects.get(pk=pk) raises Post.DoesNotExist, the view returns 404."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "7. Post CRUD (Complete Lifecycle)",
+      "description": "Tests the full post lifecycle: list posts (GET /posts/), create via direct serializer (POST /posts/), full update (PUT), and delete (including admin deleting any post).",
+      "item": [
+
+        {
+          "name": "GET /posts/ – List All Posts (privacy-filtered)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – post list returned', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});",
+                  "pm.test('Posts have expected serializer fields', function () {",
+                  "    var posts = pm.response.json();",
+                  "    pm.expect(posts.length).to.be.above(0);",
+                  "    var first = posts[0];",
+                  "    pm.expect(first).to.include.keys(['id','title','content','post_type','privacy','author','author_username','like_count','comment_count']);",
+                  "});",
+                  "pm.test('No other user private posts visible', function () {",
+                  "    var posts = pm.response.json();",
+                  "    var userId = parseInt(pm.environment.get('user_id'));",
+                  "    posts.forEach(function(p) {",
+                  "        if (p.privacy === 'private') {",
+                  "            pm.expect(p.author).to.equal(userId);",
+                  "        }",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", ""]
+            },
+            "description": "GET /posts/ returns all public posts + user's own private posts via Q(privacy='public') | Q(author=request.user). Uses PostSerializer (includes nested comments)."
+          },
+          "response": []
+        },
+
+        {
+          "name": "POST /posts/ – Create Post (Direct Serializer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 – post created via direct endpoint', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j).to.have.property('id');",
+                  "    pm.expect(j.title).to.equal('Direct Serializer Post');",
+                  "    pm.expect(j.privacy).to.equal('public');",
+                  "    pm.environment.set('direct_post_id', String(j.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Direct Serializer Post\", \"content\": \"Created via POST /posts/ (not the factory).\", \"post_type\": \"text\", \"privacy\": \"public\", \"author\": {{user_id}}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", ""]
+            },
+            "description": "POST /posts/ uses PostSerializer.save() directly (not PostFactory). The response includes the full serialized post with id, title, content, etc."
+          },
+          "response": []
+        },
+
+        {
+          "name": "PUT /posts/{id}/ – Full Post Update",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – full update successful', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.title).to.equal('Fully Updated Post');",
+                  "    pm.expect(j.content).to.equal('Content replaced by PUT.');",
+                  "    pm.expect(j.post_type).to.equal('text');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Fully Updated Post\", \"content\": \"Content replaced by PUT.\", \"post_type\": \"text\", \"privacy\": \"public\", \"author\": {{user_id}}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/{{direct_post_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{direct_post_id}}", ""]
+            },
+            "description": "PUT /posts/{id}/ does a full (non-partial) update via PostSerializer(post, data=..., partial=False). All required fields must be provided."
+          },
+          "response": []
+        },
+
+        {
+          "name": "DELETE /posts/{id}/ – Owner Deletes Own Post → 204",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 – post deleted successfully', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{direct_post_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{direct_post_id}}", ""]
+            },
+            "description": "PostDetailView.delete returns 204 No Content after successful deletion. Also invalidates both the post detail cache and the feed cache."
+          },
+          "response": []
+        },
+
+        {
+          "name": "GET Deleted Post → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 – deleted post is gone', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error).to.include('not found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{direct_post_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{direct_post_id}}", ""]
+            },
+            "description": "After deletion, fetching the same post ID must return 404 – confirms the record is removed from the database."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Admin → DELETE Any User's Post → 204",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Create a fresh post as user so admin can delete it",
+                  "var url = pm.environment.get('base_url') + '/posts/create/';",
+                  "pm.sendRequest({",
+                  "    url: url,",
+                  "    method: 'POST',",
+                  "    header: {",
+                  "        'Content-Type': 'application/json',",
+                  "        'Authorization': 'Token ' + pm.environment.get('user_token')",
+                  "    },",
+                  "    body: {",
+                  "        mode: 'raw',",
+                  "        raw: JSON.stringify({ title: 'Admin Delete Target', content: 'To be deleted by admin.', post_type: 'text', privacy: 'public' })",
+                  "    }",
+                  "}, function(err, res) {",
+                  "    if (!err && res.code === 201) {",
+                  "        pm.environment.set('admin_delete_target_id', String(res.json().post_id));",
+                  "    }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 – admin can delete any user post', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Token {{admin_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{admin_delete_target_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{admin_delete_target_id}}", ""]
+            },
+            "description": "IsAdminOrAuthor allows admins to delete any post regardless of authorship. Confirms admin override works for destructive operations."
+          },
+          "response": []
+        },
+
+        {
+          "name": "No Token → POST /posts/ → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 – post creation requires authentication', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Should Not Work\", \"content\": \"No auth.\", \"post_type\": \"text\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", ""]
+            },
+            "description": "PostListCreate has permission_classes = [IsAuthenticated, IsNotGuest]. Without a token, IsAuthenticated rejects with 401."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Guest → POST /posts/ → 403 (write blocked)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 – guest cannot create via direct endpoint', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",       "type": "text" },
+              { "key": "Authorization", "value": "Token {{guest_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Guest Direct Post\", \"content\": \"Should be blocked.\", \"post_type\": \"text\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", ""]
+            },
+            "description": "IsNotGuest blocks write methods for guest-role users."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Guest → GET /posts/ → 200 (IsNotGuest allows reads)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – guest can list posts (IsNotGuest allows safe methods)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{guest_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", ""]
+            },
+            "description": "GET /posts/ with PostListCreate permissions [IsAuthenticated, IsNotGuest]. IsNotGuest.has_permission allows safe methods (GET/HEAD/OPTIONS) so guests can read the post list."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "8. Comments (Extended)",
+      "description": "Tests the global comment endpoints (GET/POST /posts/comments/), comment validation (empty text), and admin comment deletion edge cases.",
+      "item": [
+
+        {
+          "name": "GET /posts/comments/ – Global Comment List",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – global comment list returned', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.be.an('array');",
+                  "});",
+                  "pm.test('Comment objects have expected fields', function () {",
+                  "    var comments = pm.response.json();",
+                  "    if (comments.length > 0) {",
+                  "        var c = comments[0];",
+                  "        pm.expect(c).to.include.keys(['id','text','author','author_username','post','post_title','created_at']);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/comments/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "comments", ""]
+            },
+            "description": "GET /posts/comments/ returns ALL comments across all posts via CommentListCreate. Uses select_related to avoid N+1 on author and post."
+          },
+          "response": []
+        },
+
+        {
+          "name": "POST /posts/comments/ – Create Comment (Global Endpoint)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 – comment created via global endpoint', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j).to.have.property('id');",
+                  "    pm.expect(j.text).to.equal('Comment via global endpoint');",
+                  "    pm.environment.set('global_comment_id', String(j.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"text\": \"Comment via global endpoint\", \"post\": {{test_post_id}}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/comments/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "comments", ""]
+            },
+            "description": "POST /posts/comments/ requires both 'text' and 'post' (integer ID) in the body. Author is auto-set from the authenticated user."
+          },
+          "response": []
+        },
+
+        {
+          "name": "POST /posts/{id}/comment/ – Empty Text → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – empty comment text rejected', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"text\": \"   \"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/{{test_post_id}}/comment/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{test_post_id}}", "comment", ""]
+            },
+            "description": "CommentSerializer.validate_text raises ValidationError for blank/whitespace-only text. The view returns 400 with the error details."
+          },
+          "response": []
+        },
+
+        {
+          "name": "DELETE Comment Without comment_id → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – comment_id query param required', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('comment_id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Token {{admin_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{test_post_id}}/comment/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{test_post_id}}", "comment", ""]
+            },
+            "description": "CommentOnPostView.delete requires the comment_id query parameter. Omitting it returns 400 with an error message."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Comment on Non-Existent Post → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 – cannot comment on non-existent post', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error).to.include('not found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"text\": \"Comment on ghost post\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/99999/comment/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "99999", "comment", ""]
+            },
+            "description": "CommentOnPostView.post catches Post.DoesNotExist and returns 404."
+          },
+          "response": []
+        },
+
+        {
+          "name": "No Token → GET /posts/comments/ → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 – comment list requires authentication', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/posts/comments/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "comments", ""]
+            },
+            "description": "CommentListCreate has permission_classes = [IsAuthenticated]. Unauthenticated requests return 401."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "9. Post Factory (Post Types & Validation)",
+      "description": "Tests the PostFactory endpoint with different post types (text, image, video) and their metadata validation rules. Also tests invalid type and missing required metadata.",
+      "item": [
+
+        {
+          "name": "Create Image Post (with file_size metadata) → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 – image post created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.post_type).to.equal('image');",
+                  "    pm.expect(j.title).to.equal('Image Post');",
+                  "    pm.environment.set('image_post_id', String(j.post_id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Image Post\", \"content\": \"A nice photo.\", \"post_type\": \"image\", \"privacy\": \"public\", \"metadata\": {\"file_size\": 2048576}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/create/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "create", ""]
+            },
+            "description": "PostFactory requires 'file_size' in metadata for image posts. Providing it satisfies the validation and creates the post."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Create Video Post (with duration metadata) → 201",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 – video post created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.post_type).to.equal('video');",
+                  "    pm.expect(j.title).to.equal('Video Post');",
+                  "    pm.environment.set('video_post_id', String(j.post_id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Video Post\", \"content\": \"A cool video.\", \"post_type\": \"video\", \"privacy\": \"public\", \"metadata\": {\"duration\": 120}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/create/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "create", ""]
+            },
+            "description": "PostFactory requires 'duration' in metadata for video posts. Providing it satisfies the validation."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Create Image Post Without file_size → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – image post requires file_size metadata', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('file_size');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Bad Image Post\", \"content\": \"Missing metadata.\", \"post_type\": \"image\", \"metadata\": {}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/create/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "create", ""]
+            },
+            "description": "PostFactory raises ValueError('Image posts require file_size in metadata') when file_size is missing from the metadata dict."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Create Video Post Without duration → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – video post requires duration metadata', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('duration');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Bad Video Post\", \"content\": \"Missing duration.\", \"post_type\": \"video\", \"metadata\": {}}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/create/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "create", ""]
+            },
+            "description": "PostFactory raises ValueError('Video posts require duration in metadata') when duration is missing."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Create Post With Invalid Type → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – invalid post type rejected', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('Invalid post type');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Invalid Type Post\", \"content\": \"Unknown type.\", \"post_type\": \"audio\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/create/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "create", ""]
+            },
+            "description": "PostFactory validates post_type against Post.POST_TYPES ('text', 'image', 'video'). Invalid types raise ValueError."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Create Post Without Title → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – title is required', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('title');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",     "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"content\": \"No title provided.\", \"post_type\": \"text\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/create/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "create", ""]
+            },
+            "description": "CreatePostView.post accesses data['title'] which raises KeyError when missing. The view catches this and returns 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Guest → POST /posts/create/ → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 – guest cannot use factory endpoint', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",       "type": "text" },
+              { "key": "Authorization", "value": "Token {{guest_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Guest Factory Post\", \"content\": \"Should be blocked.\", \"post_type\": \"text\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/create/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "create", ""]
+            },
+            "description": "CreatePostView has permission_classes = [IsAuthenticated, IsNotGuest]. Guest users are blocked by IsNotGuest."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Verify Image Post Detail Fields",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – image post detail returned', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.post_type).to.equal('image');",
+                  "    pm.expect(j.metadata).to.have.property('file_size');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/{{image_post_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "{{image_post_id}}", ""]
+            },
+            "description": "Confirms the image post was stored with correct post_type and metadata fields intact."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "10. User Profiles & Management",
+      "description": "Tests user profile endpoints for different roles, admin user management, and invalid user-creation scenarios.",
+      "item": [
+
+        {
+          "name": "Admin → GET /posts/users/me/ → 200 (admin profile)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – admin profile returned', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.role).to.equal('admin');",
+                  "    pm.expect(j.username).to.equal(pm.environment.get('admin_username'));",
+                  "    pm.expect(j).to.have.all.keys(['id','username','email','role','created_at']);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{admin_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/users/me/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "users", "me", ""]
+            },
+            "description": "GET /posts/users/me/ returns the authenticated user's profile. Admin role should be reflected in the response."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Guest → GET /posts/users/me/ → 200 (guest profile)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – guest profile returned', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.role).to.equal('guest');",
+                  "    pm.expect(j.username).to.equal(pm.environment.get('guest_username'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{guest_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/users/me/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "users", "me", ""]
+            },
+            "description": "Guest users should be able to view their own profile via /posts/users/me/. It only requires IsAuthenticated."
+          },
+          "response": []
+        },
+
+        {
+          "name": "No Token → GET /posts/users/me/ → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 – profile requires authentication', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/posts/users/me/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "users", "me", ""]
+            },
+            "description": "AuthenticatedUserProfileView requires IsAuthenticated."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Admin → Create User Without Username → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – username is required', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('Username');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",      "type": "text" },
+              { "key": "Authorization", "value": "Token {{admin_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"password\": \"TestPass123!\", \"role\": \"user\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/users/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "users", ""]
+            },
+            "description": "UserListCreate.post checks for username and returns 400 if missing."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Admin → Create User With Invalid Role → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – invalid role rejected', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('Invalid role');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",      "type": "text" },
+              { "key": "Authorization", "value": "Token {{admin_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"invalid_role_user\", \"password\": \"TestPass123!\", \"role\": \"superuser\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/users/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "users", ""]
+            },
+            "description": "UserListCreate.post validates role against User.ROLE_CHOICES ('admin', 'user', 'guest'). Invalid roles return 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "User → PATCH /posts/users/me/ → 200 (update own profile)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – user updated own profile', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j).to.have.property('id');",
+                  "    pm.expect(j).to.have.property('username');",
+                  "    pm.expect(j).to.have.property('email');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json",      "type": "text" },
+              { "key": "Authorization", "value": "Token {{user_token}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\": \"updated@example.com\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/users/me/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "users", "me", ""]
+            },
+            "description": "AuthenticatedUserProfileView supports PATCH for self-profile updates. Users can update their own fields (e.g. email)."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Guest → GET /posts/users/ → 403 (staff only)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 – guest cannot list users', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{guest_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/users/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "users", ""]
+            },
+            "description": "UserListCreate has permission_classes = [IsAdminRole]. Guests (not admin role) are rejected with 403."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "11. Legacy Authentication",
+      "description": "Tests the legacy /posts/authenticate/ endpoint which uses Django's authenticate() and returns a status message rather than a token.",
+      "item": [
+
+        {
+          "name": "Valid Credentials → 200 + Success Message",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 – authentication successful', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.message).to.equal('Authentication successful!');",
+                  "    pm.expect(j.username).to.equal(pm.environment.get('user_username'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"{{user_username}}\", \"password\": \"{{user_password}}\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/authenticate/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "authenticate", ""]
+            },
+            "description": "The legacy authenticate_user view uses Django's authenticate() and returns a JSON message. It does NOT issue a token – that is handled by /auth/token/."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Invalid Credentials → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 – invalid credentials message', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().message).to.equal('Invalid credentials.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"nonexistent_user\", \"password\": \"badpassword\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/posts/authenticate/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "authenticate", ""]
+            },
+            "description": "When authenticate() returns None, the view returns 401 with 'Invalid credentials.' message."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "12. Google OAuth",
+      "description": "Tests the Google OAuth login endpoint. Note: full OAuth flow requires a valid Google ID token. These tests verify error handling for missing/invalid tokens.",
+      "item": [
+
+        {
+          "name": "Missing id_token → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – id_token is required', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('id_token');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "POST /auth/google/login requires an 'id_token' field in the request body. Omitting it returns 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Empty id_token → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 – empty id_token rejected', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.include('id_token');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id_token\": \"\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "An empty string for id_token is caught by the .strip() check and returns 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Invalid id_token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 – invalid Google token rejected', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().error).to.include('Invalid');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id_token\": \"this.is.not.a.valid.google.token\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "A malformed token is sent to Google's tokeninfo endpoint, which rejects it. The view returns 401 with an error message."
+          },
+          "response": []
+        },
+
+        {
+          "name": "Valid Google Token → 200 (manual test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// This test is meant to be run manually with a real Google ID token.",
+                  "// Set {{google_id_token}} in the environment before running.",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('200 – Google auth successful', function () {",
+                  "        var j = pm.response.json();",
+                  "        pm.expect(j).to.have.property('token');",
+                  "        pm.expect(j).to.have.property('user_id');",
+                  "        pm.expect(j).to.have.property('username');",
+                  "        pm.expect(j).to.have.property('email');",
+                  "        pm.expect(j).to.have.property('created');",
+                  "        pm.environment.set('google_drf_token', j.token);",
+                  "        pm.environment.set('google_user_email', j.email);",
+                  "        pm.environment.set('google_username', j.username);",
+                  "    });",
+                  "} else {",
+                  "    pm.test('SKIPPED – set google_id_token in env for this test', function () {",
+                  "        pm.expect(true).to.be.true;",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id_token\": \"{{google_id_token}}\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "To run this test, obtain a valid Google ID token from Google Sign-In and set the google_id_token environment variable. On success, the Connectly auth token is stored for subsequent requests."
           },
           "response": []
         }

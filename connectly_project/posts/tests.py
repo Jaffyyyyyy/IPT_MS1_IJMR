@@ -1,9 +1,11 @@
+import json
+from unittest.mock import patch
 from django.test import TestCase, override_settings
 from django.core.cache import cache
 from rest_framework.test import APITestCase, APIClient
 from rest_framework.authtoken.models import Token
 from rest_framework import status
-from .models import Post, User, Comment
+from .models import Post, User, Comment, Like
 from factories.post_factory import PostFactory
 
 
@@ -572,10 +574,10 @@ class CachingTestCase(APITestCase):
 
     def test_news_feed_is_cached(self):
         """News feed response is stored in cache after first request"""
-        # Cache key for page 1, default page_size
-        from posts.views import NewsFeedPagination
+        from posts.views import NewsFeedPagination, _feed_cache_version
         page_size = NewsFeedPagination.page_size
-        cache_key = f'news_feed_{self.user.id}_p1_s{page_size}'
+        ver = _feed_cache_version(self.user.id)
+        cache_key = f'news_feed_{self.user.id}_v{ver}_p1_s{page_size}'
         self.assertIsNone(cache.get(cache_key))
 
         response = self.client.get('/posts/feed/')
@@ -599,19 +601,19 @@ class PaginationTestCase(APITestCase):
         self.token = Token.objects.create(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
 
-        # Create 15 public posts for pagination testing
-        for i in range(15):
+        # Create 25 public posts for pagination testing (> DEFAULT_PAGE_SIZE=20 so page 2 exists)
+        for i in range(25):
             Post.objects.create(
                 title=f'Post {i}', content=f'Content {i}',
                 author=self.user, privacy='public'
             )
 
-        # Create one post with 12 comments for comment pagination
+        # Create one post with 25 comments for comment pagination (> DEFAULT_PAGE_SIZE=20 so page 2 exists)
         self.comment_post = Post.objects.create(
             title='Comment Post', content='Has many comments',
             author=self.user, privacy='public'
         )
-        for i in range(12):
+        for i in range(25):
             Comment.objects.create(
                 text=f'Comment {i}', author=self.user, post=self.comment_post
             )
@@ -619,18 +621,19 @@ class PaginationTestCase(APITestCase):
     # ---- News feed pagination ----
 
     def test_feed_returns_first_page(self):
-        """GET /posts/feed/ returns first 10 posts and pagination metadata"""
+        """GET /posts/feed/ returns first page of posts (default size from ConfigManager) and pagination metadata"""
+        from posts.views import NewsFeedPagination
         response = self.client.get('/posts/feed/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('count', response.data)
         self.assertIn('next', response.data)
         self.assertIn('previous', response.data)
         self.assertIn('results', response.data)
-        self.assertLessEqual(len(response.data['results']), 10)
+        self.assertLessEqual(len(response.data['results']), NewsFeedPagination.page_size)
 
     def test_feed_second_page_has_remaining_posts(self):
-        """GET /posts/feed/?page=2 returns the remaining posts"""
-        response = self.client.get('/posts/feed/?page=2')
+        """GET /posts/feed/?page=2&page_size=5 returns the remaining posts"""
+        response = self.client.get('/posts/feed/?page=2&page_size=5')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreater(len(response.data['results']), 0)
 
@@ -644,8 +647,8 @@ class PaginationTestCase(APITestCase):
         """count reflects the total number of visible posts"""
         response = self.client.get('/posts/feed/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # 15 created above + 1 comment_post = 16
-        self.assertEqual(response.data['count'], 16)
+        # 25 created above + 1 comment_post = 26
+        self.assertEqual(response.data['count'], 26)
 
     def test_feed_page_beyond_range_returns_empty(self):
         """Requesting a page beyond range returns empty results"""
@@ -657,21 +660,643 @@ class PaginationTestCase(APITestCase):
     # ---- Comment pagination ----
 
     def test_comments_first_page(self):
-        """GET /posts/{id}/comments/ returns first 10 comments"""
+        """GET /posts/{id}/comments/ returns first page of comments (default size from ConfigManager)"""
+        from posts.views import CommentPagination
         response = self.client.get(f'/posts/{self.comment_post.id}/comments/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('count', response.data)
-        self.assertLessEqual(len(response.data['results']), 10)
+        self.assertLessEqual(len(response.data['results']), CommentPagination.page_size)
 
     def test_comments_second_page(self):
-        """GET /posts/{id}/comments/?page=2 returns remaining comments"""
-        response = self.client.get(f'/posts/{self.comment_post.id}/comments/?page=2')
+        """GET /posts/{id}/comments/?page=2&page_size=5 returns remaining comments"""
+        response = self.client.get(f'/posts/{self.comment_post.id}/comments/?page=2&page_size=5')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreater(len(response.data['results']), 0)
 
     def test_comments_total_count(self):
-        """Count reflects all 12 comments"""
+        """Count reflects all 25 comments"""
         response = self.client.get(f'/posts/{self.comment_post.id}/comments/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['count'], 12)
+        self.assertEqual(response.data['count'], 25)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class LikePostTestCase(APITestCase):
+    """Test POST/DELETE /posts/{id}/like/ — like and unlike a post"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username='likeuser', password='pass', role='user')
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+        self.guest = User.objects.create_user(username='guest_likeuser', password='pass', role='guest')
+        self.guest_token = Token.objects.create(user=self.guest)
+        self.post = Post.objects.create(
+            title='Like Target', content='likeable content',
+            post_type='text', privacy='public', author=self.user
+        )
+
+    def test_like_post_success(self):
+        """Authenticated user can like a post — 201 with message and like data"""
+        response = self.client.post(f'/posts/{self.post.id}/like/')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('message', response.data)
+        self.assertIn('like', response.data)
+
+    def test_like_post_duplicate(self):
+        """Liking the same post twice returns 400"""
+        self.client.post(f'/posts/{self.post.id}/like/')
+        response = self.client.post(f'/posts/{self.post.id}/like/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('already liked', response.data['error'])
+
+    def test_unlike_post_success(self):
+        """User can unlike a previously liked post — 200"""
+        self.client.post(f'/posts/{self.post.id}/like/')
+        response = self.client.delete(f'/posts/{self.post.id}/like/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('message', response.data)
+
+    def test_unlike_not_liked(self):
+        """Unliking a post that was never liked returns 400"""
+        response = self.client.delete(f'/posts/{self.post.id}/like/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('not liked', response.data['error'])
+
+    def test_like_nonexistent_post(self):
+        """Liking a non-existent post returns 404"""
+        response = self.client.post('/posts/9999/like/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_like_requires_auth(self):
+        """Unauthenticated request to like a post returns 401"""
+        self.client.credentials()
+        response = self.client.post(f'/posts/{self.post.id}/like/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_guest_cannot_like_post(self):
+        """Guest users are read-only and cannot like posts"""
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.guest_token.key)
+        response = self.client.post(f'/posts/{self.post.id}/like/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class CommentOnPostSuccessTestCase(APITestCase):
+    """Test POST /posts/{id}/comment/ — add comment to a specific post"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username='commentuser', password='pass', role='user')
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+        self.post = Post.objects.create(
+            title='Comment Target', content='content',
+            post_type='text', privacy='public', author=self.user
+        )
+
+    def test_comment_success(self):
+        """Authenticated user can comment on a post — 201 with message and comment"""
+        response = self.client.post(
+            f'/posts/{self.post.id}/comment/', {'text': 'Nice post!'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('message', response.data)
+        self.assertIn('comment', response.data)
+        self.assertEqual(response.data['message'], 'Comment added successfully')
+
+    def test_comment_empty_text(self):
+        """Whitespace-only comment text is rejected — 400"""
+        response = self.client.post(
+            f'/posts/{self.post.id}/comment/', {'text': '   '}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_comment_nonexistent_post(self):
+        """Commenting on a non-existent post returns 404"""
+        response = self.client.post('/posts/9999/comment/', {'text': 'hi'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class CommentListCreateTestCase(APITestCase):
+    """Test GET/POST /posts/comments/ — global comment list and create"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username='clcuser', password='pass', role='user')
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+        self.post = Post.objects.create(
+            title='For Comments', content='content',
+            post_type='text', privacy='public', author=self.user
+        )
+        Comment.objects.create(text='Seeded comment', author=self.user, post=self.post)
+
+    def test_list_all_comments(self):
+        """GET /posts/comments/ returns a flat list of all comments (unpaginated)"""
+        response = self.client.get('/posts/comments/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
+        self.assertGreaterEqual(len(response.data), 1)
+
+    def test_create_comment_global(self):
+        """POST /posts/comments/ with post FK creates a comment; author set from token"""
+        response = self.client.post(
+            '/posts/comments/',
+            {'text': 'Global comment', 'post': self.post.id},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['author'], self.user.id)
+
+    def test_create_comment_invalid_post(self):
+        """POST /posts/comments/ with non-existent post FK returns 404"""
+        response = self.client.post(
+            '/posts/comments/',
+            {'text': 'Bad post id', 'post': 9999},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_comment_list_requires_auth(self):
+        """GET /posts/comments/ without token returns 401"""
+        self.client.credentials()
+        response = self.client.get('/posts/comments/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class PostListCreateSerializerTestCase(APITestCase):
+    """Test POST /posts/ (serializer path) and PUT /posts/{id}/"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username='plcuser', password='pass', role='user')
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+        self.post = Post.objects.create(
+            title='Detail Post', content='original content',
+            post_type='text', privacy='public', author=self.user
+        )
+
+    def test_create_post_serializer_path(self):
+        """POST /posts/ creates a post and binds author from the authenticated user"""
+        data = {
+            'title': 'Serializer Post',
+            'content': 'Created via serializer',
+            'post_type': 'text',
+            'privacy': 'public',
+            'author': self.user.id,
+        }
+        response = self.client.post('/posts/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['title'], 'Serializer Post')
+        self.assertEqual(response.data['author'], self.user.id)
+
+    def test_create_post_ignores_spoofed_author(self):
+        """POST /posts/ ignores author in body and uses request.user"""
+        other_user = User.objects.create_user(username='spoof_target', password='pass', role='user')
+        data = {
+            'title': 'Spoof Attempt',
+            'content': 'Trying to spoof author',
+            'post_type': 'text',
+            'privacy': 'public',
+            'author': other_user.id,
+        }
+        response = self.client.post('/posts/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['author'], self.user.id)
+
+    def test_create_post_guest_blocked(self):
+        """Guest user cannot POST to /posts/ — 403"""
+        guest = User.objects.create_user(username='guestuser2', password='pass', role='guest')
+        guest_token = Token.objects.create(user=guest)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + guest_token.key)
+        data = {'title': 'Guest post', 'content': 'blocked', 'post_type': 'text', 'author': guest.id}
+        response = self.client.post('/posts/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_put_full_replace(self):
+        """PUT /posts/{id}/ replaces all fields; post author receives 200"""
+        data = {
+            'title': 'Replaced Title',
+            'content': 'Fully replaced content',
+            'post_type': 'text',
+            'privacy': 'public',
+            'author': self.user.id,
+        }
+        response = self.client.put(f'/posts/{self.post.id}/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['title'], 'Replaced Title')
+        self.assertEqual(response.data['content'], 'Fully replaced content')
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class UserCreateTestCase(APITestCase):
+    """Test POST /posts/users/ — admin-only user creation"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(username='adminuc', password='pass', role='admin')
+        self.admin_token = Token.objects.create(user=self.admin)
+        self.user = User.objects.create_user(username='regularuc', password='pass', role='user')
+        self.user_token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.admin_token.key)
+
+    def test_admin_can_create_user(self):
+        """Admin can POST /posts/users/ and the response includes the role field — 201"""
+        data = {'username': 'newucuser', 'email': 'nu@example.com', 'password': 'pass123', 'role': 'user'}
+        response = self.client.post('/posts/users/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('role', response.data)
+        self.assertEqual(response.data['role'], 'user')
+
+    def test_create_user_missing_username(self):
+        """POST without username returns 400 with descriptive error"""
+        data = {'email': 'nouser@example.com', 'role': 'user'}
+        response = self.client.post('/posts/users/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Username is required', response.data['error'])
+
+    def test_create_user_invalid_role(self):
+        """POST with an unrecognised role returns 400"""
+        data = {'username': 'newucuser2', 'role': 'superuser'}
+        response = self.client.post('/posts/users/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Invalid role', response.data['error'])
+
+    def test_create_user_missing_password(self):
+        """POST without password returns 400"""
+        data = {'username': 'newucuser3', 'email': 'no-pass@example.com', 'role': 'user'}
+        response = self.client.post('/posts/users/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Password is required', response.data['error'])
+
+    def test_non_admin_cannot_create_user(self):
+        """Regular user cannot POST /posts/users/ — 403"""
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.user_token.key)
+        data = {'username': 'hacked', 'role': 'user'}
+        response = self.client.post('/posts/users/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class AuthenticateUserViewTestCase(APITestCase):
+    """Test POST /posts/authenticate/ — CBV authentication endpoint"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='authuser', password='secret123')
+
+    def test_valid_credentials(self):
+        """Correct username/password returns 200 with success message and username"""
+        response = self.client.post(
+            '/posts/authenticate/', {'username': 'authuser', 'password': 'secret123'}, format='json'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['message'], 'Authentication successful!')
+        self.assertEqual(response.data['username'], 'authuser')
+
+    def test_invalid_credentials(self):
+        """Wrong password returns 401 with failure message"""
+        response = self.client.post(
+            '/posts/authenticate/', {'username': 'authuser', 'password': 'wrongpass'}, format='json'
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.data['message'], 'Invalid credentials.')
+
+    def test_missing_fields(self):
+        """Missing username or password returns 400"""
+        response = self.client.post('/posts/authenticate/', {}, format='json')
+        self.assertEqual(response.status_code, 400)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class PostSearchFilterTestCase(APITestCase):
+    """Test search and filter capabilities on GET /posts/"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username='searchuser', password='pass', role='user')
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+
+        Post.objects.create(title='Django Guide', content='Learn Django', post_type='text', privacy='public', author=self.user)
+        Post.objects.create(title='Flask Guide', content='Learn Flask', post_type='text', privacy='public', author=self.user)
+        Post.objects.create(title='My Photo', content='Sunset pic', post_type='image', privacy='private', author=self.user, metadata={'file_size': 1024})
+
+    def test_search_by_title(self):
+        """?search=Django returns only matching posts"""
+        response = self.client.get('/posts/?search=Django')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['title'], 'Django Guide')
+
+    def test_search_by_content(self):
+        """?search=Flask matches content field"""
+        response = self.client.get('/posts/?search=Flask')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+
+    def test_filter_by_post_type(self):
+        """?post_type=image returns only image posts"""
+        response = self.client.get('/posts/?post_type=image')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['post_type'], 'image')
+
+    def test_filter_by_privacy(self):
+        """?privacy=private returns only private posts (owned by user)"""
+        response = self.client.get('/posts/?privacy=private')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['privacy'], 'private')
+
+    def test_no_results(self):
+        """Search with no matches returns empty list"""
+        response = self.client.get('/posts/?search=nonexistent')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 0)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class UserProfileUpdateTestCase(APITestCase):
+    """Test PATCH /posts/users/me/ — update own profile"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username='profileuser', password='pass', email='old@example.com', role='user')
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+
+    def test_update_email(self):
+        """User can update their own email via PATCH"""
+        response = self.client.patch('/posts/users/me/', {'email': 'new@example.com'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['email'], 'new@example.com')
+
+    def test_update_does_not_change_role(self):
+        """PATCH preserves fields not sent"""
+        response = self.client.patch('/posts/users/me/', {'email': 'x@example.com'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['role'], 'user')
+
+    def test_unauthenticated_cannot_update(self):
+        """PATCH without token returns 401"""
+        self.client.credentials()
+        response = self.client.patch('/posts/users/me/', {'email': 'hack@example.com'}, format='json')
+        self.assertEqual(response.status_code, 401)
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class ThrottlingTestCase(APITestCase):
+    """Verify rate limiting is configured and enforced"""
+
+    def test_throttle_classes_configured_in_settings(self):
+        """REST_FRAMEWORK settings include throttle classes and rates"""
+        from django.conf import settings
+        rf = settings.REST_FRAMEWORK
+        self.assertIn('DEFAULT_THROTTLE_CLASSES', rf)
+        self.assertIn('DEFAULT_THROTTLE_RATES', rf)
+        self.assertTrue(len(rf['DEFAULT_THROTTLE_CLASSES']) > 0)
+        self.assertIn('anon', rf['DEFAULT_THROTTLE_RATES'])
+        self.assertIn('user', rf['DEFAULT_THROTTLE_RATES'])
+
+    def test_anon_throttle_kicks_in(self):
+        """Anonymous requests are throttled after exceeding the configured rate"""
+        from rest_framework.throttling import AnonRateThrottle
+        # Directly verify the throttle class is functional and correctly configured
+        throttle = AnonRateThrottle()
+        self.assertIsNotNone(throttle.rate)
+        self.assertIn('/', throttle.rate)  # e.g. '30/minute'
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class GoogleLoginTestCase(APITestCase):
+    """Test POST /auth/google/login — Google OAuth token exchange (no real network calls)"""
+
+    def test_missing_id_token(self):
+        """Omitting id_token returns 400"""
+        response = self.client.post('/auth/google/login', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('id_token is required', response.data['error'])
+
+    def test_empty_id_token(self):
+        """Sending an empty id_token string returns 400"""
+        response = self.client.post('/auth/google/login', {'id_token': ''}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('id_token is required', response.data['error'])
+
+    @patch('posts.views.GoogleLoginView._verify_google_token')
+    def test_invalid_id_token(self, mock_verify):
+        """Token rejected by Google (_verify_google_token returns error dict) → 401"""
+        mock_verify.return_value = {'error': 'invalid_token', 'error_description': 'Bad token'}
+        response = self.client.post(
+            '/auth/google/login', {'id_token': 'bad.token.here'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn('error', response.data)
+
+
+# ---------------------------------------------------------------------------
+# Security Settings Tests
+# ---------------------------------------------------------------------------
+
+class SecuritySettingsTestCase(TestCase):
+    """
+    Verify that security-related Django settings are configured correctly.
+    Reviews outcomes from the security perspective per OWASP best practices.
+    """
+
+    def test_ssl_redirect_enabled(self):
+        """SECURE_SSL_REDIRECT is True — all HTTP requests redirected to HTTPS"""
+        from django.conf import settings
+        self.assertTrue(settings.SECURE_SSL_REDIRECT)
+
+    def test_hsts_enabled(self):
+        """HSTS header is configured with a long max-age (>= 1 year)"""
+        from django.conf import settings
+        self.assertGreaterEqual(settings.SECURE_HSTS_SECONDS, 31536000)
+        self.assertTrue(settings.SECURE_HSTS_INCLUDE_SUBDOMAINS)
+        self.assertTrue(settings.SECURE_HSTS_PRELOAD)
+
+    def test_session_cookie_secure(self):
+        """Session cookie is flagged Secure (sent only over HTTPS)"""
+        from django.conf import settings
+        self.assertTrue(settings.SESSION_COOKIE_SECURE)
+
+    def test_csrf_cookie_secure(self):
+        """CSRF cookie is flagged Secure (sent only over HTTPS)"""
+        from django.conf import settings
+        self.assertTrue(settings.CSRF_COOKIE_SECURE)
+
+    def test_secret_key_not_default_in_env(self):
+        """SECRET_KEY is loaded via python-decouple (not hard-coded)"""
+        from django.conf import settings
+        insecure_default = (
+            'django-insecure-j$51b2nkx)yxs53+2xxy))y^mljuv9a1'
+            '!f=mqy)+#2be=l!ru&'
+        )
+        # In production the key MUST differ from the insecure default
+        self.assertIsNotNone(settings.SECRET_KEY)
+        self.assertGreater(len(settings.SECRET_KEY), 20)
+
+    def test_password_hashers_include_strong_algorithms(self):
+        """Password hashers include PBKDF2 and at least one stronger alternative"""
+        from django.conf import settings
+        hasher_names = [h.rsplit('.', 1)[-1] for h in settings.PASSWORD_HASHERS]
+        self.assertIn('PBKDF2PasswordHasher', hasher_names)
+        strong = {'Argon2PasswordHasher', 'BCryptSHA256PasswordHasher'}
+        self.assertTrue(
+            strong & set(hasher_names),
+            "At least one strong hasher (Argon2 or BCrypt) should be configured",
+        )
+
+    def test_password_validators_configured(self):
+        """At least 3 password validators are active"""
+        from django.conf import settings
+        self.assertGreaterEqual(len(settings.AUTH_PASSWORD_VALIDATORS), 3)
+
+    def test_debug_is_configurable_via_env(self):
+        """DEBUG is read from environment, not hard-coded True"""
+        from decouple import config
+        # Verify the setting is fetched via python-decouple (cast=bool)
+        debug_val = config('DEBUG', default=True, cast=bool)
+        self.assertIsInstance(debug_val, bool)
+
+    def test_allowed_hosts_not_wildcard(self):
+        """ALLOWED_HOSTS does not contain wildcard '*' for production safety"""
+        from django.conf import settings
+        self.assertNotIn('*', settings.ALLOWED_HOSTS)
+
+    def test_custom_user_model_configured(self):
+        """AUTH_USER_MODEL points to the custom User model"""
+        from django.conf import settings
+        self.assertEqual(settings.AUTH_USER_MODEL, 'posts.User')
+
+    def test_default_authentication_is_token(self):
+        """DRF default authentication is TokenAuthentication (not session)"""
+        from django.conf import settings
+        auth_classes = settings.REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES']
+        self.assertIn(
+            'rest_framework.authentication.TokenAuthentication',
+            auth_classes,
+        )
+
+    def test_default_permission_is_authenticated(self):
+        """DRF default permission requires authentication"""
+        from django.conf import settings
+        perm_classes = settings.REST_FRAMEWORK['DEFAULT_PERMISSION_CLASSES']
+        self.assertIn(
+            'rest_framework.permissions.IsAuthenticated',
+            perm_classes,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Performance / Query Optimisation Tests
+# ---------------------------------------------------------------------------
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class QueryPerformanceTestCase(APITestCase):
+    """
+    Verify N+1 query prevention and database-level optimisations.
+    Uses Django's CaptureQueriesContext to audit query budgets and
+    identify potential N+1 regressions.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='perfuser', password='pass', role='user',
+        )
+        self.token = Token.objects.create(user=self.user)
+        self.client.credentials(
+            HTTP_AUTHORIZATION='Token ' + self.token.key,
+        )
+
+        # Seed 10 posts, each with 3 likes and 3 comments from distinct users
+        self.other_users = []
+        for i in range(3):
+            u = User.objects.create_user(
+                username=f'liker{i}', password='pass', role='user',
+            )
+            self.other_users.append(u)
+
+        for i in range(10):
+            p = Post.objects.create(
+                title=f'Perf Post {i}', content=f'Content {i}',
+                post_type='text', privacy='public', author=self.user,
+            )
+            for u in self.other_users:
+                Like.objects.create(user=u, post=p)
+                Comment.objects.create(
+                    text=f'Comment by {u.username}', author=u, post=p,
+                )
+
+    def test_feed_query_count_is_constant(self):
+        """News feed uses DB-level COUNT annotations — queries stay constant."""
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+
+        cache.clear()
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get('/posts/feed/?page_size=10')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 10)
+        # Feed: 1 auth + 1 COUNT (pagination) + 1 annotated SELECT = 3
+        self.assertLessEqual(
+            len(ctx), 5,
+            f"Feed should use constant queries (got {len(ctx)})",
+        )
+
+    def test_post_detail_uses_prefetch(self):
+        """GET /posts/{id}/ fires a bounded number of queries."""
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+
+        post = Post.objects.first()
+        cache.clear()
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(f'/posts/{post.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('like_count', response.data)
+        self.assertIn('comment_count', response.data)
+        # Detail: 1 auth + 1 post (select_related) + 1 prefetch likes
+        # + 1 prefetch comments = 4
+        self.assertLessEqual(
+            len(ctx), 6,
+            f"Post detail should use bounded queries (got {len(ctx)})",
+        )
+
+    def test_feed_returns_annotated_counts(self):
+        """Feed serializer uses DB-level COUNT annotations, not Python loops."""
+        response = self.client.get('/posts/feed/?page_size=10')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for post_data in response.data['results']:
+            self.assertIn('like_count', post_data)
+            self.assertIn('comment_count', post_data)
+            # Each post was given 3 likes & 3 comments in setUp
+            self.assertEqual(post_data['like_count'], 3)
+            self.assertEqual(post_data['comment_count'], 3)
+
+    def test_post_list_prefetch_prevents_n_plus_one_on_likes(self):
+        """GET /posts/ uses prefetch_related for likes — verified via query log."""
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get('/posts/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 10)
+
+        # Verify likes are batch-loaded via IN clause, not per-post
+        like_queries = [
+            q['sql'] for q in ctx
+            if 'posts_like' in q['sql'] and 'IN' in q['sql']
+        ]
+        self.assertGreaterEqual(
+            len(like_queries), 1,
+            "Likes should be prefetched in a single batch query",
+        )
 

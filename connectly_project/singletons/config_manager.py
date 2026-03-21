@@ -1,10 +1,15 @@
+import threading
+
+
 class ConfigManager:
     _instance = None
+    _lock = threading.Lock()
 
     def __new__(cls, *args, **kwargs):
-        if not cls._instance:
-            cls._instance = super(ConfigManager, cls).__new__(cls, *args, **kwargs)
-            cls._instance._initialize()
+        with cls._lock:
+            if not cls._instance:
+                cls._instance = super(ConfigManager, cls).__new__(cls, *args, **kwargs)
+                cls._instance._initialize()
         return cls._instance
 
     def _initialize(self):

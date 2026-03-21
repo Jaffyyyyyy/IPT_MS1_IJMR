@@ -10,14 +10,27 @@ class UserSerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
     comments = serializers.StringRelatedField(many=True, read_only=True)
-    like_count = serializers.IntegerField(read_only=True)
-    comment_count = serializers.IntegerField(read_only=True)
+    like_count = serializers.SerializerMethodField()
+    comment_count = serializers.SerializerMethodField()
     author_username = serializers.CharField(source='author.username', read_only=True)
 
     class Meta:
         model = Post
         fields = ['id', 'title', 'content', 'post_type', 'privacy', 'metadata', 'author',
                   'author_username', 'created_at', 'like_count', 'comment_count', 'comments']
+        read_only_fields = ['author', 'created_at']
+
+    def get_like_count(self, obj):
+        # Prefer DB-level annotation (set by annotate() in list views) to avoid
+        # per-object COUNT queries that bypass prefetch_related.
+        if hasattr(obj, 'annotated_like_count'):
+            return obj.annotated_like_count
+        return obj.likes.count()
+
+    def get_comment_count(self, obj):
+        if hasattr(obj, 'annotated_comment_count'):
+            return obj.annotated_comment_count
+        return obj.comments.count()
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -40,6 +53,24 @@ class CommentSerializer(serializers.ModelSerializer):
         if not Post.objects.filter(id=value.id).exists():
             raise serializers.ValidationError("Post not found.")
         return value
+
+
+class PostDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer used for the cached post detail endpoint.
+    Counts are resolved from DB-level annotations (annotated_like_count /
+    annotated_comment_count) to avoid extra per-post queries.
+    """
+    like_count = serializers.IntegerField(source='annotated_like_count', read_only=True)
+    comment_count = serializers.IntegerField(source='annotated_comment_count', read_only=True)
+    author_username = serializers.CharField(source='author.username', read_only=True)
+
+    class Meta:
+        model = Post
+        fields = [
+            'id', 'title', 'content', 'post_type', 'privacy', 'metadata',
+            'author', 'author_username', 'created_at', 'like_count', 'comment_count',
+        ]
 
 
 class PostFeedSerializer(serializers.ModelSerializer):

@@ -54,7 +54,6 @@ class IsNotGuest(BasePermission):
         return request.user.role != 'guest'
 
 
-# ---- Kept for backward-compat with UserListCreate ----
 class IsAdminOrReadOnly(BasePermission):
     """
     Allows full access to admin-role users.
@@ -66,13 +65,4 @@ class IsAdminOrReadOnly(BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.role == 'admin')
 
 
-class IsStaffUser(BasePermission):
-    """
-    Restricts all access to users with role == 'admin'.
-    """
-    def has_permission(self, request, view):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and request.user.role == 'admin'
-        )
+

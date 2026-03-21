@@ -18,8 +18,8 @@ venv.bak/
 
 # Django
 *.log
+db.sqlite3
 db.sqlite3-journal
-/connectly_project/db.sqlite3 # Exclude database file from connectly_project
 /staticfiles/
 /media/
 *.pot
@@ -27,7 +27,6 @@ local_settings.py
 /connectly_project/.env # Exclude .env file with secrets
 # SSL certificates (self-signed; never commit private keys)
 *.pem
-# Note: db.sqlite3 is included for easy peer setup with test data
 
 # IDE
 .vscode/
