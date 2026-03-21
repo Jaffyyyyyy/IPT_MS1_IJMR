@@ -1,4 +1,7 @@
 import json
+import urllib.request
+import urllib.parse
+import urllib.error
 from django.core.cache import cache
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -8,6 +11,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
+from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from .models import Post, Comment, User, Like
@@ -607,6 +611,153 @@ class NewsFeedView(APIView):
         response = paginator.get_paginated_response(serializer.data)
         cache.set(cache_key, response.data, CACHE_TTL)
         return response
+
+
+# ---------------------------------------------------------------------------
+# Google OAuth Login
+# ---------------------------------------------------------------------------
+_GOOGLE_TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo?id_token={token}'
+
+
+class GoogleLoginView(APIView):
+    """
+    POST /auth/google/login
+
+    Accepts a Google ID token (obtained client-side via Google Sign-In / OAuth2
+    consent screen) and exchanges it for a Connectly API auth token.
+
+    Request body  (JSON):
+        { "id_token": "<google_id_token>" }
+
+    Success response  200:
+        {
+            "token":    "<drf_auth_token>",
+            "user_id":  <int>,
+            "username": "<str>",
+            "email":    "<str>",
+            "created":  <bool>   # true if a new account was just created
+        }
+
+    Error responses:
+        400  – id_token field missing or empty
+        401  – Google rejected the token (expired, tampered, wrong audience)
+        409  – email already registered via password; manual merge required
+        500  – unexpected server error
+    """
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        id_token = request.data.get('id_token', '').strip()
+        if not id_token:
+            return Response(
+                {'error': 'id_token is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # --- Verify the token with Google -----------------------------------
+        google_info = self._verify_google_token(id_token)
+        if google_info is None:
+            logger.warning("Google OAuth: token verification failed (invalid/expired token)")
+            return Response(
+                {'error': 'Invalid or expired Google token.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        if 'error' in google_info:
+            logger.warning(f"Google OAuth: token error – {google_info['error']}")
+            return Response(
+                {'error': 'Invalid or expired Google token.'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        email = google_info.get('email', '').lower()
+        google_sub = google_info.get('sub', '')   # Google user ID
+        given_name = google_info.get('given_name', '')
+        family_name = google_info.get('family_name', '')
+
+        if not email or not google_sub:
+            logger.warning("Google OAuth: token missing email or sub claim")
+            return Response(
+                {'error': 'Google token is missing required claims (email / sub).'},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # --- Find or create the local user ----------------------------------
+        try:
+            user, created = User.objects.get_or_create(
+                email=email,
+                defaults={
+                    # Use the Google sub as a stable, safe username base
+                    'username': self._safe_username(email, google_sub),
+                    'first_name': given_name,
+                    'last_name': family_name,
+                    'role': User.ROLE_USER,
+                },
+            )
+        except IntegrityError:
+            # Race-condition: two simultaneous first-time logins for the same email
+            user = User.objects.get(email=email)
+            created = False
+
+        # Issue or retrieve a DRF auth token
+        token_obj, _ = Token.objects.get_or_create(user=user)
+
+        logger.info(
+            f"Google OAuth login: user={user.username} email={email} "
+            f"created={created}"
+        )
+        return Response(
+            {
+                'token':    token_obj.key,
+                'user_id':  user.id,
+                'username': user.username,
+                'email':    user.email,
+                'created':  created,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _verify_google_token(id_token: str) -> dict | None:
+        """
+        Call Google's tokeninfo endpoint to validate *id_token*.
+        Returns the decoded JSON payload dict, or None on network/HTTP errors.
+        """
+        url = _GOOGLE_TOKENINFO_URL.format(token=urllib.parse.quote(id_token, safe=''))
+        try:
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as exc:
+            # 400 from Google means bad / expired token; read the body for logging
+            try:
+                payload = json.loads(exc.read().decode())
+            except Exception:
+                payload = {'error': str(exc)}
+            return payload
+        except Exception as exc:
+            logger.error(f"Google tokeninfo request failed: {exc}")
+            return None
+
+    @staticmethod
+    def _safe_username(email: str, google_sub: str) -> str:
+        """
+        Derive a unique username from the email local-part.
+        Appends a short suffix from the Google sub to avoid collisions.
+        """
+        local = email.split('@')[0]
+        # Strip characters not allowed in Django usernames
+        safe = ''.join(c for c in local if c.isalnum() or c in '._-')
+        suffix = google_sub[-6:]
+        candidate = f'{safe}_{suffix}'
+        # If the candidate already exists (e.g. two google accounts with same
+        # email prefix), fall back to the full sub.
+        if User.objects.filter(username=candidate).exists():
+            return f'g_{google_sub}'
+        return candidate
 
 
 

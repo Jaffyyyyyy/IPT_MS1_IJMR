@@ -18,12 +18,14 @@ from django.contrib import admin
 from django.urls import path, include
 from django.views.generic.base import RedirectView
 from rest_framework.authtoken.views import obtain_auth_token
+from posts.views import GoogleLoginView
 
 urlpatterns = [
     path('', RedirectView.as_view(url='/posts/', permanent=False)),
     path('admin/', admin.site.urls),
     path('api-auth/', include('rest_framework.urls')),
     path('auth/token/', obtain_auth_token, name='obtain-auth-token'),  # Token auth endpoint
+    path('auth/google/login', GoogleLoginView.as_view(), name='google-login'),  # Google OAuth
     path('posts/', include('posts.urls')),
     path('accounts/', include('allauth.urls')),
 ]

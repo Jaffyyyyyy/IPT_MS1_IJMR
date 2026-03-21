@@ -41,7 +41,11 @@
     { "key": "test_comment2_id",       "value": "", "type": "default", "enabled": true },
     { "key": "feed_count_cold",        "value": "", "type": "default", "enabled": true },
     { "key": "cached_post_title",      "value": "", "type": "default", "enabled": true },
-    { "key": "cache_bust_post_id",     "value": "", "type": "default", "enabled": true }
+    { "key": "cache_bust_post_id",     "value": "", "type": "default", "enabled": true },
+    { "key": "google_id_token",        "value": "", "type": "secret",  "enabled": true, "description": "FILL IN before running Google OAuth tests: paste a fresh Google ID token here (obtained via OAuth2 playground or your app's sign-in flow)." },
+    { "key": "google_drf_token",       "value": "", "type": "default", "enabled": true, "description": "Auto-filled by test 01 in the Google OAuth collection." },
+    { "key": "google_user_email",      "value": "", "type": "default", "enabled": true },
+    { "key": "google_username",        "value": "", "type": "default", "enabled": true }
   ],
   "_postman_variable_scope": "environment",
   "_postman_exported_at": "2026-03-21T00:00:00.000Z",

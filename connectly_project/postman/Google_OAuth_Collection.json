@@ -1,0 +1,432 @@
+{
+  "info": {
+    "_postman_id": "connectly-google-oauth-v1",
+    "name": "Connectly – Google OAuth Tests",
+    "description": "Tests for the POST /auth/google/login endpoint.\n\n## How this endpoint works\nThe client (mobile app / SPA) signs the user in with Google and receives a **Google ID token** (a signed JWT). That token is POSTed directly to the Connectly backend, which verifies it with Google's tokeninfo endpoint, then looks up (or creates) the matching Connectly user and returns a **DRF auth token** ready to use on all subsequent API calls.\n\n## Test folders\n| Folder | Purpose |\n|--------|---------|\n| 1. Valid token – new user | First-ever Google login → account is auto-created |\n| 2. Valid token – existing user | Second login returns same token, `created=false` |\n| 3. Error handling | Expired token, missing field, empty body |\n\n## Prerequisites\n1. Django dev server running at `{{base_url}}` (default `http://127.0.0.1:8000`).\n2. No environment variables need to be pre-filled; the scripts fill them as they run.\n3. For tests that need a **real** Google ID token (folders 1–2) see the demo guide in README.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+
+    {
+      "name": "1. Valid Token – New User (first login)",
+      "description": "Simulates a brand-new Google user logging in for the first time. A real Google ID token must be pasted into `google_id_token` in the environment (see demo guide). On success the test stores the returned DRF token for folder 2.",
+      "item": [
+
+        {
+          "name": "01 · Google Login – valid token → 200 + DRF token issued",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has required fields', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j).to.have.all.keys('token', 'user_id', 'username', 'email', 'created');",
+                  "});",
+                  "",
+                  "pm.test('DRF token is a non-empty string', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.token).to.be.a('string').and.to.have.length.above(0);",
+                  "    pm.environment.set('google_drf_token', j.token);",
+                  "    pm.environment.set('google_user_email', j.email);",
+                  "    pm.environment.set('google_username', j.username);",
+                  "});",
+                  "",
+                  "pm.test('created flag is true for first login', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.created).to.equal(true);",
+                  "});",
+                  "",
+                  "pm.test('email matches Google account email', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.email).to.be.a('string').and.to.include('@');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"{{google_id_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "Paste a fresh Google ID token (< 1 hour old) into the `google_id_token` environment variable before running."
+          },
+          "response": [
+            {
+              "name": "200 OK – new user created",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"token\": \"9944b09199c62bcf9418ad846dd0e4bbdfc6ee4b\",\n  \"user_id\": 42,\n  \"username\": \"johndoe_123456\",\n  \"email\": \"johndoe@gmail.com\",\n  \"created\": true\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+
+        {
+          "name": "02 · Use returned token – GET /posts/users/me/ → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200 – token works on protected endpoints', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Profile email matches Google email', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.email).to.equal(pm.environment.get('google_user_email'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Token {{google_drf_token}}", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/posts/users/me/",
+              "host": ["{{base_url}}"],
+              "path": ["posts", "users", "me", ""]
+            },
+            "description": "Calls a protected endpoint using the DRF token returned by the Google login, proving the token grants API access."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "2. Valid Token – Existing User (second login)",
+      "description": "Re-uses the same Google ID token to log in again. The same DRF token should be returned and `created` must be `false`.",
+      "item": [
+
+        {
+          "name": "03 · Google Login – second login → created=false, same token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('created flag is false for returning user', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.created).to.equal(false);",
+                  "});",
+                  "",
+                  "pm.test('Same DRF token is reused', function () {",
+                  "    var j = pm.response.json();",
+                  "    var prev = pm.environment.get('google_drf_token');",
+                  "    pm.expect(j.token).to.equal(prev);",
+                  "});",
+                  "",
+                  "pm.test('Username unchanged from first login', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.username).to.equal(pm.environment.get('google_username'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"{{google_id_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "Uses the same `google_id_token` set by folder 1. Token must still be within its 1-hour Google validity window."
+          },
+          "response": [
+            {
+              "name": "200 OK – existing user",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"token\": \"9944b09199c62bcf9418ad846dd0e4bbdfc6ee4b\",\n  \"user_id\": 42,\n  \"username\": \"johndoe_123456\",\n  \"email\": \"johndoe@gmail.com\",\n  \"created\": false\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        }
+
+      ]
+    },
+
+    {
+      "name": "3. Error Handling",
+      "description": "Covers every documented error path without needing a live Google token.",
+      "item": [
+
+        {
+          "name": "04 · Missing id_token field → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 when id_token is absent', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error message mentions id_token', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.error).to.include('id_token');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "Sends an empty JSON object. The endpoint should return 400 because `id_token` is required."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request – missing field",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"id_token is required.\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+
+        {
+          "name": "05 · Empty id_token string → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400 when id_token is empty string', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error body present', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j).to.have.property('error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "Sends an empty string as the token value."
+          },
+          "response": [
+            {
+              "name": "400 Bad Request – empty token",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"id_token is required.\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+
+        {
+          "name": "06 · Expired / fake token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 for invalid token', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Error message returned', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.error).to.be.a('string').and.to.have.length.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"this.is.not.a.valid.google.token\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "Sends a clearly fake token; Google's tokeninfo API will reject it and the server returns 401."
+          },
+          "response": [
+            {
+              "name": "401 Unauthorized – invalid token",
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"Invalid or expired Google token.\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+
+        {
+          "name": "07 · Tampered JWT (valid structure, bad signature) → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 for tampered JWT', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Generic error message (no internal details leaked)', function () {",
+                  "    var j = pm.response.json();",
+                  "    pm.expect(j.error).to.not.include('Exception');",
+                  "    pm.expect(j.error).to.not.include('Traceback');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"eyJhbGciOiJSUzI1NiIsImtpZCI6ImZha2UifQ.eyJzdWIiOiIxMjM0NTYiLCJlbWFpbCI6InRlc3RAZ21haWwuY29tIiwiYXVkIjoiZmFrZSIsImlzcyI6Imh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbSIsImV4cCI6OTk5OTk5OTk5OX0.badsignature\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "A well-formed JWT with a fake header/payload but an invalid signature. Google's tokeninfo will still reject it."
+          },
+          "response": [
+            {
+              "name": "401 Unauthorized – bad signature",
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"Invalid or expired Google token.\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        },
+
+        {
+          "name": "08 · Wrong HTTP method (GET) → 405",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 405 for GET on login endpoint', function () {",
+                  "    pm.response.to.have.status(405);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/google/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google", "login"]
+            },
+            "description": "The endpoint only supports POST. A GET request must return 405 Method Not Allowed."
+          },
+          "response": [
+            {
+              "name": "405 Method Not Allowed",
+              "status": "Method Not Allowed",
+              "code": 405,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"detail\": \"Method \\\"GET\\\" not allowed.\"\n}",
+              "_postman_previewlanguage": "json"
+            }
+          ]
+        }
+
+      ]
+    }
+
+  ],
+  "variable": []
+}

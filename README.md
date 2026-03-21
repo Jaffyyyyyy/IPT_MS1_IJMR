@@ -122,7 +122,7 @@ Run from inside the `connectly_project/` directory:
 
 ```bash
 # Windows (full path to the venv Python)
-c:\Users\jafph\IPT_MS1_IJMR-1\.venv\Scripts\python.exe manage.py runserver_plus 127.0.0.1:8000 --cert-file cert.pem --key-file key.pem
+cd connectly_project ; ..\.venv\Scripts\python.exe manage.py runserver_plus 127.0.0.1:8000 --cert-file cert.pem --key-file key.pem
 
 # Mac/Linux
 python manage.py runserver_plus 127.0.0.1:8000 --cert-file cert.pem --key-file key.pem
