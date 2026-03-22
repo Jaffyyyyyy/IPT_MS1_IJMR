@@ -2,7 +2,7 @@
 
 A Django REST Framework API with Token Authentication, Role-Based Access Control (RBAC), Privacy Settings, Caching, Pagination, Factory Pattern, Singleton design patterns, OAuth support, and User Interaction features (Likes & Comments).
 
-> **🤖 AI Disclosure:** This README file, some comments, and some testing were created with little to no AI assistance. The rest of the codebase was developed independently without AI assistance.
+> **🤖 AI Disclosure:** This README file, some comments, and some testing were created with AI assistance. The rest of the codebase was developed independently without AI assistance.
 
 ## ✨ Features
 
@@ -17,7 +17,7 @@ A Django REST Framework API with Token Authentication, Role-Based Access Control
 ### User Interactions
 - ✅ **Like/Unlike Posts** - Users can like and unlike posts
 - ✅ **Comment on Posts** - Add comments to posts with validation
-- ✅ **Paginated Comments** - Efficient retrieval of large comment datasets (10 per page, configurable)
+- ✅ **Paginated Comments** - Efficient retrieval of large comment datasets (20 per page, configurable)
 - ✅ **Like & Comment Counts** - DB-level aggregated counts on post details and feed
 - ✅ **Duplicate Prevention** - Users can only like a post once
 - ✅ **News Feed** - Paginated, cached feed of posts (newest first, privacy-filtered)
@@ -34,7 +34,7 @@ A Django REST Framework API with Token Authentication, Role-Based Access Control
 - ✅ **Post detail caching** - `GET /posts/{id}/` cached individually; invalidated on write
 - ✅ **Cache invalidation** - Cache automatically busted when posts are created or deleted
 - ✅ **N+1 prevention** - `select_related` / `prefetch_related` / DB `COUNT` annotations throughout
-- ✅ **Pagination** - Feed (10/page, max 100) and comments (10/page, max 100) both paginated
+- ✅ **Pagination** - Feed (20/page, max 100) and comments (20/page, max 100) both paginated
 
 ### Design Patterns
 - ✅ **Factory Pattern** - PostFactory for creating posts with type-specific validation
@@ -176,7 +176,7 @@ The application is split into focused, single-responsibility modules rather than
 |--------|----------------|
 | `models.py` | Data layer — User, Post, Comment, Like ORM definitions |
 | `serializers.py` | Data shape — three context-specific serialiser classes (see below) |
-| `permissions.py` | Access control — four reusable permission classes used across every view |
+| `permissions.py` | Access control — five reusable permission classes used across every view |
 | `views.py` | Request handling — class-based views consuming the above |
 | `urls.py` | Routing only — no logic |
 | `factories/post_factory.py` | Post-creation logic isolated from views |
@@ -334,11 +334,13 @@ All authenticated endpoints require: `Authorization: Token <your-token>`
 | `GET` | `/posts/users/` | List all users | `admin` only |
 | `POST` | `/posts/users/` | Create new user with role (username + password required) | `admin` only |
 | `GET` | `/posts/users/me/` | Get current user profile | Any authenticated |
+| `PATCH` | `/posts/users/me/` | Update own profile fields | Any authenticated |
 
 ### Posts
 | Method | Endpoint | Description | Required Role |
 |--------|----------|-------------|---------------|
 | `GET` | `/posts/` | List all posts | Any authenticated |
+| `GET` | `/posts/?search=<q>&post_type=<type>&privacy=<val>` | Filter posts by keyword, type, or privacy | Any authenticated |
 | `POST` | `/posts/` | Create post (serializer path; author always from auth token) | `user` or `admin` (not `guest`) |
 | `POST` | `/posts/create/` | Create post via Factory Pattern | `user` or `admin` (not `guest`) |
 | `GET` | `/posts/{id}/` | Get post detail (cached) | Any authenticated; `private` → author or admin |
@@ -351,6 +353,8 @@ All authenticated endpoints require: `Authorization: Token <your-token>`
 | `GET` | `/posts/feed/` | Paginated feed, newest first, privacy-filtered, cached | Any authenticated |
 
 Query params: `?page=<n>&page_size=<n>` (default 20, max 100)
+
+> **Note:** The default page size is driven by `ConfigManager.DEFAULT_PAGE_SIZE` (currently `20`) — changing this setting updates all paginated endpoints simultaneously.
 
 ### Likes
 | Method | Endpoint | Description | Required Role |
@@ -434,10 +438,10 @@ Unique constraint on `(user, post)` — one like per user per post.
 | Class | Rule |
 |-------|------|
 | `IsAdminRole` | Requires `request.user.role == 'admin'` |
-| `IsStaffUser` | Requires `request.user.role == 'admin'` |
-| `IsNotGuest` | Blocks users with `role == 'guest'` |
 | `IsAdminOrAuthor` | Allows if admin role **or** the object's author |
-| `IsPostAuthor` | Allows only the post author |
+| `IsAdminOrReadOnly` | Full access for admin; read-only for other authenticated users |
+| `IsNotGuest` | Blocks users with `role == 'guest'` on write methods |
+| `IsPostAuthor` | Allows only the post author on write; any authenticated user on read |
 
 ### Permission Matrix
 
@@ -483,14 +487,16 @@ CACHE_TTL = 60 * 5  # 5 minutes
 
 ### Cache Invalidation
 
-Feed caches use a **version counter** per user (`feed_ver_{uid}` key, TTL = 24 h). When a post is created or deleted the version is incremented — all previously cached feed pages for that user become stale automatically without needing to enumerate individual keys.
+Feed caches use a **version counter** per user (`feed_ver_{uid}` key, TTL = 24 h). When a post is created, updated, or deleted the version is incremented — all previously cached feed pages for that user become stale automatically without needing to enumerate individual keys.
 
 Invalidation is triggered by:
 - `POST /posts/` — new post created
 - `POST /posts/create/` — new post created via factory
+- `PUT /posts/{id}/` — post updated (full)
+- `PATCH /posts/{id}/` — post updated (partial)
 - `DELETE /posts/{id}/` — post deleted
 
-Post-detail cache is invalidated on every write to that post object.
+Post-detail cache (`post_detail_{pk}`) is also deleted on every write to that post object.
 
 ---
 
@@ -502,8 +508,8 @@ Both the news feed and comment lists are paginated.
 
 | Class | Endpoint | Default page size | Max page size |
 |-------|----------|-------------------|---------------|
-| `NewsFeedPagination` | `GET /posts/feed/` | 10 | 100 |
-| `CommentPagination` | `GET /posts/{id}/comments/` | 10 | 100 |
+| `NewsFeedPagination` | `GET /posts/feed/` | 20 | 100 |
+| `CommentPagination` | `GET /posts/{id}/comments/` | 20 | 100 |
 
 ### Query Parameters
 
@@ -626,7 +632,6 @@ Dependencies are listed in [dependencies.txt](connectly_project/dependencies.txt
 - django-extensions 4.1
 
 **Authentication:**
-- djangorestframework_simplejwt 5.5.1
 - django-allauth 0.62.0
 
 **Security:**
@@ -1041,15 +1046,7 @@ This section documents the key architectural choices made during development, th
 
 ---
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## � Technologies Used
+## 💻 Technologies Used
 
 - **Django** 6.0.1 - Web framework
 - **Django REST Framework** 3.16.1 - API framework
@@ -1085,4 +1082,4 @@ This is a coursework project. For peer review:
 
 ---
 
-**Note:** The `env/` folder is NOT included in the repository (it's in `.gitignore`). Each user must create their own virtual environment as shown in the setup instructions.
+**Note:** The `.venv/` folder is NOT included in the repository (it's in `.gitignore`). Each user must create their own virtual environment as shown in the setup instructions.
