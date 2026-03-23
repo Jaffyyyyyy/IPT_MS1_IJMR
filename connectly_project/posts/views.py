@@ -2,6 +2,7 @@ import json
 import urllib.request
 import urllib.parse
 import urllib.error
+from decouple import config
 from django.core.cache import cache
 from django.contrib.auth import authenticate
 from django.db import IntegrityError
@@ -35,6 +36,8 @@ logger.info("API initialized successfully.")
 # Cache-invalidation helpers for the news feed
 # ---------------------------------------------------------------------------
 _GLOBAL_FEED_VER_KEY = 'global_feed_ver'
+_USER_LIST_VER_KEY = 'user_list_ver'
+_GLOBAL_COMMENT_VER_KEY = 'global_comment_ver'
 
 
 def _feed_cache_version(user_id: int) -> str:
@@ -63,6 +66,28 @@ def invalidate_feed_cache(user_id: int) -> None:
     logger.debug(
         "Feed cache invalidated (global → %s, user %s → %s)",
         g + 1, user_id, u + 1,
+    )
+
+
+def invalidate_user_list_cache() -> None:
+    """Bump the user-list version so the cached user list is superseded."""
+    v = cache.get(_USER_LIST_VER_KEY, 0)
+    cache.set(_USER_LIST_VER_KEY, v + 1, CACHE_TTL * 288)
+    logger.debug("User list cache invalidated (ver → %s)", v + 1)
+
+
+def invalidate_post_comments_cache(post_id: int) -> None:
+    """
+    Bump both the per-post comment version and the global comment list version
+    so all cached pages for that post's comments become stale.
+    """
+    v = cache.get(f'comment_ver_{post_id}', 0)
+    cache.set(f'comment_ver_{post_id}', v + 1, CACHE_TTL * 288)
+    g = cache.get(_GLOBAL_COMMENT_VER_KEY, 0)
+    cache.set(_GLOBAL_COMMENT_VER_KEY, g + 1, CACHE_TTL * 288)
+    logger.debug(
+        "Comment cache invalidated (post=%s, ver → %s, global → %s)",
+        post_id, v + 1, g + 1,
     )
 
 
@@ -96,8 +121,15 @@ class UserListCreate(APIView):
     permission_classes = [IsAdminRole]
 
     def get(self, request):
+        ver = cache.get(_USER_LIST_VER_KEY, 0)
+        cache_key = f'user_list_v{ver}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            logger.info("Cache hit for user list")
+            return Response(cached)
         users = User.objects.all()
         serializer = UserSerializer(users, many=True)
+        cache.set(cache_key, serializer.data, CACHE_TTL)
         return Response(serializer.data)
 
 
@@ -122,6 +154,7 @@ class UserListCreate(APIView):
             user = User.objects.create_user(username=username, email=email, password=password)
             user.role = role
             user.save(update_fields=['role'])
+            invalidate_user_list_cache()
             logger.info("User created via API: %s (role=%s)", user.username, role)
             serializer = UserSerializer(user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -139,6 +172,17 @@ class PostListCreate(APIView):
         # select_related prevents N+1 on author; DB-level Count annotations resolve
         # like_count / comment_count in a single aggregated query instead of
         # issuing per-object COUNT calls through the @property on the model.
+        search = request.query_params.get('search', '')
+        post_type = request.query_params.get('post_type', '')
+        privacy = request.query_params.get('privacy', '')
+
+        ver = _feed_cache_version(request.user.id)
+        cache_key = f'post_list_{request.user.id}_v{ver}_{search}_{post_type}_{privacy}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            logger.info("Cache hit for post list (user=%s)", request.user.id)
+            return Response(cached)
+
         posts = (
             Post.objects
             .filter(Q(privacy='public') | Q(author=request.user))
@@ -150,9 +194,6 @@ class PostListCreate(APIView):
         )
 
         # Optional search / filter via query params
-        search = request.query_params.get('search')
-        post_type = request.query_params.get('post_type')
-        privacy = request.query_params.get('privacy')
         if search:
             posts = posts.filter(
                 Q(title__icontains=search) | Q(content__icontains=search)
@@ -163,6 +204,7 @@ class PostListCreate(APIView):
             posts = posts.filter(privacy=privacy)
 
         serializer = PostSerializer(posts, many=True)
+        cache.set(cache_key, serializer.data, CACHE_TTL)
         return Response(serializer.data)
 
 
@@ -185,8 +227,15 @@ class CommentListCreate(APIView):
 
     def get(self, request):
         # select_related prevents N+1 on author and post lookups in the serializer
+        ver = cache.get(_GLOBAL_COMMENT_VER_KEY, 0)
+        cache_key = f'comment_list_v{ver}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            logger.info("Cache hit for global comment list")
+            return Response(cached)
         comments = Comment.objects.select_related('author', 'post').all()
         serializer = CommentSerializer(comments, many=True)
+        cache.set(cache_key, serializer.data, CACHE_TTL)
         return Response(serializer.data)
 
 
@@ -203,6 +252,7 @@ class CommentListCreate(APIView):
         if serializer.is_valid():
             # Set author from authenticated user
             serializer.save(author=request.user, post=post)
+            invalidate_post_comments_cache(post.id)
             logger.info("Comment created via API by user: %s", request.user.username)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         logger.warning("Invalid comment data: %s", serializer.errors)
@@ -355,6 +405,7 @@ class CommentOnPostView(APIView):
         serializer = CommentSerializer(data=data)
         if serializer.is_valid():
             comment = serializer.save(author=request.user, post=post)
+            invalidate_post_comments_cache(pk)
             logger.info("User %s commented on post %s", request.user.username, pk)
             return Response({
                 'message': 'Comment added successfully',
@@ -385,6 +436,7 @@ class CommentOnPostView(APIView):
         except Comment.DoesNotExist:
             return Response({'error': 'Comment not found.'}, status=status.HTTP_404_NOT_FOUND)
         comment.delete()
+        invalidate_post_comments_cache(pk)
         logger.info(
             "Admin %s deleted comment %s on post %s",
             request.user.username, comment_id, pk,
@@ -408,6 +460,15 @@ class PostCommentsView(APIView):
             logger.error("Post not found with ID: %s", pk)
             return Response({'error': 'Post not found'}, status=status.HTTP_404_NOT_FOUND)
 
+        page = request.query_params.get('page', 1)
+        page_size = request.query_params.get('page_size', self.pagination_class.page_size)
+        ver = cache.get(f'comment_ver_{pk}', 0)
+        cache_key = f'post_comments_{pk}_v{ver}_p{page}_s{page_size}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            logger.info("Cache hit for comments of post %s", pk)
+            return Response(cached)
+
         # select_related prevents N+1 on author and post in CommentSerializer
         comments = Comment.objects.filter(post=post).select_related('author', 'post')
 
@@ -424,11 +485,13 @@ class PostCommentsView(APIView):
                 'previous': None,
                 'results': []
             })
-        
+
         serializer = CommentSerializer(paginated_comments, many=True)
         logger.info("Retrieved %s comments for post %s", len(serializer.data), pk)
-        
-        return paginator.get_paginated_response(serializer.data)
+
+        response = paginator.get_paginated_response(serializer.data)
+        cache.set(cache_key, response.data, CACHE_TTL)
+        return response
 
 
 class PostDetailView(APIView):
@@ -537,13 +600,20 @@ class AuthenticatedUserProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        cache_key = f'user_profile_{request.user.id}'
+        cached = cache.get(cache_key)
+        if cached is not None:
+            logger.info("Cache hit for user profile %s", request.user.id)
+            return Response(cached)
         serializer = UserSerializer(request.user)
+        cache.set(cache_key, serializer.data, CACHE_TTL)
         return Response(serializer.data)
 
     def patch(self, request):
         serializer = UserSerializer(request.user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            cache.delete(f'user_profile_{request.user.id}')
             logger.info("User %s updated their profile", request.user.username)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -626,6 +696,12 @@ _GOOGLE_TOKENINFO_URL = 'https://oauth2.googleapis.com/tokeninfo?id_token={token
 
 class GoogleLoginView(APIView):
     """
+    GET  /auth/google/login
+
+    Returns the Google OAuth client_id needed by the frontend to initiate the
+    Google Sign-In flow.  Response is cached for the process lifetime since the
+    value never changes at runtime.
+
     POST /auth/google/login
 
     Accepts a Google ID token (obtained client-side via Google Sign-In / OAuth2
@@ -651,6 +727,19 @@ class GoogleLoginView(APIView):
     """
     authentication_classes = []
     permission_classes = []
+
+    _GOOGLE_CONFIG_CACHE_KEY = 'google_oauth_config'
+
+    def get(self, request):
+        """Return the Google OAuth client_id for frontend Sign-In initialisation."""
+        cached = cache.get(self._GOOGLE_CONFIG_CACHE_KEY)
+        if cached is not None:
+            logger.info("Cache hit for Google OAuth config")
+            return Response(cached)
+        data = {'client_id': config('GOOGLE_OAUTH_CLIENT_ID', default='')}
+        # Cache indefinitely within the process — value only changes on redeploy.
+        cache.set(self._GOOGLE_CONFIG_CACHE_KEY, data, CACHE_TTL * 288)  # 24 h
+        return Response(data)
 
     def post(self, request):
         id_token = request.data.get('id_token', '').strip()

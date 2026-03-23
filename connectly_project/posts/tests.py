@@ -584,6 +584,156 @@ class CachingTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNotNone(cache.get(cache_key))
 
+    # ------------------------------------------------------------------
+    # GET /posts/  (PostListCreate)
+    # ------------------------------------------------------------------
+
+    def test_post_list_is_cached(self):
+        """GET /posts/ stores the response in cache after the first request"""
+        from posts.views import _feed_cache_version
+        ver = _feed_cache_version(self.user.id)
+        cache_key = f'post_list_{self.user.id}_v{ver}___'
+        self.assertIsNone(cache.get(cache_key))
+
+        response = self.client.get('/posts/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(cache.get(cache_key))
+
+    def test_post_list_cache_busted_on_post_create(self):
+        """POST /posts/ bumps the global feed version counter, orphaning the cached post-list page"""
+        from posts.views import _GLOBAL_FEED_VER_KEY
+        self.client.get('/posts/')  # populate cache
+        ver_before = cache.get(_GLOBAL_FEED_VER_KEY, 0)
+
+        self.client.post(
+            '/posts/',
+            {'title': 'New Post', 'content': 'body', 'post_type': 'text'},
+            format='json',
+        )
+        ver_after = cache.get(_GLOBAL_FEED_VER_KEY, 0)
+        self.assertGreater(ver_after, ver_before)
+
+    # ------------------------------------------------------------------
+    # GET /posts/users/  (UserListCreate)
+    # ------------------------------------------------------------------
+
+    def test_user_list_is_cached(self):
+        """GET /posts/users/ stores the response in cache after the first request (admin only)"""
+        from posts.views import _USER_LIST_VER_KEY
+        self.user.role = 'admin'
+        self.user.save(update_fields=['role'])
+        ver = cache.get(_USER_LIST_VER_KEY, 0)
+        cache_key = f'user_list_v{ver}'
+        self.assertIsNone(cache.get(cache_key))
+
+        response = self.client.get('/posts/users/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(cache.get(cache_key))
+
+    def test_user_list_cache_busted_on_user_create(self):
+        """POST /posts/users/ bumps the user-list version counter"""
+        from posts.views import _USER_LIST_VER_KEY
+        self.user.role = 'admin'
+        self.user.save(update_fields=['role'])
+        self.client.get('/posts/users/')  # populate cache
+        ver_before = cache.get(_USER_LIST_VER_KEY, 0)
+
+        self.client.post(
+            '/posts/users/',
+            {'username': 'newbatchuser', 'password': 'pass1234!'},
+            format='json',
+        )
+        ver_after = cache.get(_USER_LIST_VER_KEY, 0)
+        self.assertGreater(ver_after, ver_before)
+
+    # ------------------------------------------------------------------
+    # GET /posts/users/me/  (AuthenticatedUserProfileView)
+    # ------------------------------------------------------------------
+
+    def test_user_profile_is_cached(self):
+        """GET /posts/users/me/ stores the response in cache after the first request"""
+        cache_key = f'user_profile_{self.user.id}'
+        self.assertIsNone(cache.get(cache_key))
+
+        response = self.client.get('/posts/users/me/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(cache.get(cache_key))
+
+    def test_user_profile_cache_invalidated_on_patch(self):
+        """PATCH /posts/users/me/ explicitly deletes the user-profile cache entry"""
+        cache_key = f'user_profile_{self.user.id}'
+        self.client.get('/posts/users/me/')  # populate cache
+        self.assertIsNotNone(cache.get(cache_key))
+
+        self.client.patch('/posts/users/me/', {'first_name': 'Updated'}, format='json')
+        self.assertIsNone(cache.get(cache_key))
+
+    # ------------------------------------------------------------------
+    # GET /posts/{id}/comments/  (PostCommentsView)
+    # ------------------------------------------------------------------
+
+    def test_post_comments_is_cached(self):
+        """GET /posts/{id}/comments/ stores the response in cache after the first request"""
+        from posts.views import CommentPagination
+        page_size = CommentPagination.page_size
+        ver = cache.get(f'comment_ver_{self.post.id}', 0)
+        cache_key = f'post_comments_{self.post.id}_v{ver}_p1_s{page_size}'
+        self.assertIsNone(cache.get(cache_key))
+
+        response = self.client.get(f'/posts/{self.post.id}/comments/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(cache.get(cache_key))
+
+    def test_post_comments_cache_busted_on_comment_create(self):
+        """POST /posts/{id}/comment/ bumps the per-post comment version counter"""
+        ver_before = cache.get(f'comment_ver_{self.post.id}', 0)
+
+        self.client.post(
+            f'/posts/{self.post.id}/comment/', {'text': 'Hello!'}, format='json'
+        )
+        ver_after = cache.get(f'comment_ver_{self.post.id}', 0)
+        self.assertGreater(ver_after, ver_before)
+
+    # ------------------------------------------------------------------
+    # GET /posts/comments/  (CommentListCreate)
+    # ------------------------------------------------------------------
+
+    def test_global_comment_list_is_cached(self):
+        """GET /posts/comments/ stores the response in cache after the first request"""
+        from posts.views import _GLOBAL_COMMENT_VER_KEY
+        ver = cache.get(_GLOBAL_COMMENT_VER_KEY, 0)
+        cache_key = f'comment_list_v{ver}'
+        self.assertIsNone(cache.get(cache_key))
+
+        response = self.client.get('/posts/comments/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(cache.get(cache_key))
+
+    def test_global_comment_list_cache_busted_on_comment_create(self):
+        """Adding a comment bumps the global comment version counter, busting the list cache"""
+        from posts.views import _GLOBAL_COMMENT_VER_KEY
+        self.client.get('/posts/comments/')  # populate cache
+        ver_before = cache.get(_GLOBAL_COMMENT_VER_KEY, 0)
+
+        self.client.post(
+            f'/posts/{self.post.id}/comment/', {'text': 'Hello!'}, format='json'
+        )
+        ver_after = cache.get(_GLOBAL_COMMENT_VER_KEY, 0)
+        self.assertGreater(ver_after, ver_before)
+
+    # ------------------------------------------------------------------
+    # GET /auth/google/login  (GoogleLoginView)
+    # ------------------------------------------------------------------
+
+    def test_google_oauth_config_is_cached(self):
+        """GET /auth/google/login stores the client_id config in cache after the first request"""
+        cache_key = 'google_oauth_config'
+        self.assertIsNone(cache.get(cache_key))
+
+        response = self.client.get('/auth/google/login')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(cache.get(cache_key))
+
 
 # ---------------------------------------------------------------------------
 # Pagination Tests

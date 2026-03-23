@@ -30,9 +30,17 @@ A Django REST Framework API with Token Authentication, Role-Based Access Control
 - ✅ **Privacy enforcement** - Private posts return 404 (not 403) to non-owners to obscure existence
 
 ### Performance
-- ✅ **Feed caching** - `GET /feed/` results cached per user+page with version-based invalidation
+> **All GET endpoints are cached.** Every read endpoint in the API has a dedicated cache key with automatic invalidation on writes.
+
+- ✅ **Feed caching** - `GET /posts/feed/` results cached per user+page with version-based invalidation
 - ✅ **Post detail caching** - `GET /posts/{id}/` cached individually; invalidated on write
-- ✅ **Cache invalidation** - Cache automatically busted when posts are created or deleted
+- ✅ **Post list caching** - `GET /posts/` results cached per user+query-params with version-based invalidation
+- ✅ **User list caching** - `GET /posts/users/` cached with version counter; invalidated when a user is created
+- ✅ **User profile caching** - `GET /posts/users/me/` cached per user; invalidated on profile update
+- ✅ **Post comments caching** - `GET /posts/{id}/comments/` cached per post+page; invalidated on comment write
+- ✅ **Global comment list caching** - `GET /posts/comments/` cached with version counter; invalidated on comment write
+- ✅ **Google OAuth config caching** - `GET /auth/google/login` returns the client_id cached for 24 h; value only changes on redeploy
+- ✅ **Cache invalidation** - Cache automatically busted when posts or comments are created, updated, or deleted
 - ✅ **N+1 prevention** - `select_related` / `prefetch_related` / DB `COUNT` annotations throughout
 - ✅ **Pagination** - Feed (20/page, max 100) and comments (20/page, max 100) both paginated
 
@@ -134,6 +142,8 @@ Server will be available at: `https://127.0.0.1:8000`
 
 **Postman / API client:** Disable SSL certificate verification (Postman → Settings → General → SSL certificate verification → OFF) because the bundled certificates are self-signed.
 
+> **Security note:** All SSL certificate file types (`*.pem`, `*.crt`, `*.key`) are excluded from version control via `.gitignore`. Never commit private key files.
+
 ## 📁 Project Structure
 
 ```
@@ -141,7 +151,7 @@ connectly_project/
 ├── manage.py                  # Django management script
 ├── db.sqlite3                # SQLite database
 ├── dependencies.txt             # Python dependencies
-├── cert.pem / key.pem        # SSL certificates for HTTPS
+├── cert.pem / key.pem / *.crt / *.key  # SSL certificates for HTTPS (gitignored)
 ├── connectly_project/        # Main Django settings
 │   ├── settings.py           # Project configuration
 │   ├── urls.py               # Root URL routing
@@ -249,6 +259,7 @@ Beyond authentication and RBAC, the following security measures are configured i
 - **HTTPS / HSTS**: `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `SECURE_HSTS_SECONDS = 31536000` (1 year) with subdomains and preload.
 - **Author spoofing prevention**: `author` is always set from `request.user` on the server; the client cannot supply or override it.
 - **Secrets management**: `SECRET_KEY`, `GOOGLE_OAUTH_CLIENT_ID/SECRET` loaded from `.env` via `python-decouple`, never committed.
+- **SSL certificate exclusion**: Certificate files (`*.pem`, `*.crt`, `*.key`) are listed in `.gitignore` — private keys are never committed to version control.
 
 ---
 
@@ -331,16 +342,16 @@ All authenticated endpoints require: `Authorization: Token <your-token>`
 ### Users
 | Method | Endpoint | Description | Required Role |
 |--------|----------|-------------|---------------|
-| `GET` | `/posts/users/` | List all users | `admin` only |
+| `GET` | `/posts/users/` | List all users (cached) | `admin` only |
 | `POST` | `/posts/users/` | Create new user with role (username + password required) | `admin` only |
-| `GET` | `/posts/users/me/` | Get current user profile | Any authenticated |
+| `GET` | `/posts/users/me/` | Get current user profile (cached) | Any authenticated |
 | `PATCH` | `/posts/users/me/` | Update own profile fields | Any authenticated |
 
 ### Posts
 | Method | Endpoint | Description | Required Role |
 |--------|----------|-------------|---------------|
-| `GET` | `/posts/` | List all posts | Any authenticated |
-| `GET` | `/posts/?search=<q>&post_type=<type>&privacy=<val>` | Filter posts by keyword, type, or privacy | Any authenticated |
+| `GET` | `/posts/` | List all posts (cached) | Any authenticated |
+| `GET` | `/posts/?search=<q>&post_type=<type>&privacy=<val>` | Filter posts by keyword, type, or privacy (cached) | Any authenticated |
 | `POST` | `/posts/` | Create post (serializer path; author always from auth token) | `user` or `admin` (not `guest`) |
 | `POST` | `/posts/create/` | Create post via Factory Pattern | `user` or `admin` (not `guest`) |
 | `GET` | `/posts/{id}/` | Get post detail (cached) | Any authenticated; `private` → author or admin |
@@ -366,15 +377,16 @@ Query params: `?page=<n>&page_size=<n>` (default 20, max 100)
 | Method | Endpoint | Description | Required Role |
 |--------|----------|-------------|---------------|
 | `POST` | `/posts/{id}/comment/` | Add a comment | `user` or `admin` (not `guest`) |
-| `GET` | `/posts/{id}/comments/` | Get paginated comments for a post | Any authenticated |
+| `GET` | `/posts/{id}/comments/` | Get paginated comments for a post (cached) | Any authenticated |
 | `DELETE` | `/posts/{id}/comment/` | Delete any comment on a post | `admin` only |
-| `GET` | `/posts/comments/` | List all comments | Any authenticated |
+| `GET` | `/posts/comments/` | List all comments (cached) | Any authenticated |
 
 Query params for comment pagination: `?page=<n>&page_size=<n>` (default 20, max 100)
 
 ### OAuth
 | Method | Endpoint | Description | Required Role |
 |--------|----------|-------------|---------------|
+| `GET` | `/auth/google/login` | Returns Google OAuth `client_id` for frontend Sign-In initialisation (cached 24 h) | — |
 | `POST` | `/auth/google/login` | Exchange Google ID token for DRF auth token; auto-creates user | — |
 | `*` | `/accounts/*` | Django-allauth endpoints (browser-based OAuth) | — |
 ## 📊 Models & Database
@@ -480,23 +492,44 @@ CACHE_TTL = 60 * 5  # 5 minutes
 
 ### Cached Endpoints
 
-| Endpoint | Cache Key Pattern | TTL |
-|----------|------------------|-----|
-| `GET /posts/{id}/` | `post_detail_{pk}` | 5 min |
-| `GET /posts/feed/` | `news_feed_{uid}_v{ver}_p{page}_s{page_size}` | 5 min |
+| Endpoint | Cache Key Pattern | TTL | Invalidated by |
+|----------|------------------|-----|----------------|
+| `GET /posts/{id}/` | `post_detail_{pk}` | 5 min | `PUT/PATCH/DELETE /posts/{id}/` |
+| `GET /posts/feed/` | `news_feed_{uid}_v{ver}_p{page}_s{page_size}` | 5 min | Any post create / update / delete |
+| `GET /posts/` | `post_list_{uid}_v{ver}_{search}_{type}_{privacy}` | 5 min | Any post create / update / delete |
+| `GET /posts/users/` | `user_list_v{ver}` | 5 min | `POST /posts/users/` |
+| `GET /posts/users/me/` | `user_profile_{uid}` | 5 min | `PATCH /posts/users/me/` |
+| `GET /posts/{id}/comments/` | `post_comments_{pk}_v{ver}_p{page}_s{page_size}` | 5 min | Any comment create / delete on that post |
+| `GET /posts/comments/` | `comment_list_v{ver}` | 5 min | Any comment create / delete |
+| `GET /auth/google/login` | `google_oauth_config` | 24 h | Never (changes only on redeploy) |
 
 ### Cache Invalidation
 
-Feed caches use a **version counter** per user (`feed_ver_{uid}` key, TTL = 24 h). When a post is created, updated, or deleted the version is incremented — all previously cached feed pages for that user become stale automatically without needing to enumerate individual keys.
+**Feed & post-list caches** use a **compound versioned key** per user (global + per-user counter). When any post is written the version is incremented — all previously cached feed and post-list pages become stale automatically.
+
+**Post-detail cache** (`post_detail_{pk}`) is deleted on every write to that specific post.
+
+**Per-post comment cache** uses a per-post version counter (`comment_ver_{pk}`). When a comment is added to or deleted from post `pk`, the version is bumped and all cached comment pages for that post are superseded.
+
+**Global comment list cache** uses a global version counter (`global_comment_ver`). It is bumped alongside the per-post counter whenever any comment changes.
+
+**User-list cache** uses a version counter (`user_list_ver`) bumped when a new user is created via `POST /posts/users/`.
+
+**User-profile cache** (`user_profile_{uid}`) is deleted whenever the user updates their own profile via `PATCH /posts/users/me/`.
 
 Invalidation is triggered by:
-- `POST /posts/` — new post created
-- `POST /posts/create/` — new post created via factory
-- `PUT /posts/{id}/` — post updated (full)
-- `PATCH /posts/{id}/` — post updated (partial)
-- `DELETE /posts/{id}/` — post deleted
 
-Post-detail cache (`post_detail_{pk}`) is also deleted on every write to that post object.
+| Write operation | Caches invalidated |
+|---|---|
+| `POST /posts/` | Feed, post list |
+| `POST /posts/create/` | Feed, post list |
+| `PUT /posts/{id}/` | Post detail, feed, post list |
+| `PATCH /posts/{id}/` | Post detail, feed, post list |
+| `DELETE /posts/{id}/` | Post detail, feed, post list |
+| `POST /posts/{id}/comment/` | Post comments (that post), global comment list |
+| `DELETE /posts/{id}/comment/` | Post comments (that post), global comment list |
+| `POST /posts/users/` | User list |
+| `PATCH /posts/users/me/` | User profile |
 
 ---
 
@@ -533,18 +566,20 @@ Both the news feed and comment lists are paginated.
 
 ## 🧪 Postman Test Suite
 
-The collection and environment files are provided separately (not inside the repository). Obtain them from the shared Google Drive folder in the Terminal Assessment submission.
+The Postman collection, environment files, and all testing evidence (screenshots, run results) are located in the **Terminal Assessment Testing Evidences** folder on the shared Google Drive.
 
 ### Files
 
 | File | Description |
 |------|-------------|
-| `Connectly_API_Collection.json` | 98 requests across 13 test folders (includes Google OAuth tests in folder 12) |
+| `Connectly_API_Collection.json` | 112 requests across 13 test folders (includes Google OAuth tests in folder 12) |
 | `Connectly_Environment.json` | Environment variables (base URL, credentials, captured IDs) |
+
+> **Testing Evidence:** Screenshots and Postman Collection Runner results are saved in the **Terminal Assessment Testing Evidences** Google Drive folder — not in this repository.
 
 ### How to Import
 
-1. Download both files from the shared Google Drive folder, then open Postman → **Import** → drag both JSON files in.
+1. Download both files from the **Terminal Assessment Testing Evidences** Google Drive folder, then open Postman → **Import** → drag both JSON files in.
 2. Select the **Connectly Environment** in the environment dropdown (top-right).
 3. If using HTTPS: Postman → **Settings → General → SSL certificate verification → OFF**.
 
@@ -556,7 +591,7 @@ The collection and environment files are provided separately (not inside the rep
 | `1. Authentication` | 2 | Valid credentials → token; invalid credentials → 400 |
 | `2. RBAC` | 15 | Sub-folders: unauthenticated, guest, non-owner, owner, admin — verifies each permission boundary |
 | `3. Privacy Settings` | 7 | Owner sees private post; non-owner gets 404; feed filters private posts correctly |
-| `4. Caching` | 7 | Cold vs warm feed response, cache bust on post detail write, feed invalidation after create |
+| `4. Caching` | Cold/warm cache for **all** GET endpoints (`/posts/feed/`, `/posts/{id}/`, `/posts/`, `/posts/users/`, `/posts/users/me/`, `/posts/{id}/comments/`, `/posts/comments/`, `/auth/google/login`); cache-hit verification; invalidation after writes |
 | `5. Pagination` | 10 | Default/custom page_size, page 2, out-of-range page, feed and comment pagination |
 | `6. Likes` | 8 | Like, duplicate prevention, unlike, unlike-not-liked error, unauthenticated, non-existent post |
 | `7. Post CRUD` | 9 | List posts, create (direct serializer), PUT full update, DELETE, admin delete any post, guest/unauth blocked |
@@ -822,7 +857,7 @@ The `response.credential` value is the Google ID token.
 
 ### Step 8 — Test with Postman
 
-1. Download `Connectly_API_Collection.json` and `Connectly_Environment.json` from the shared Google Drive folder, then import both into Postman.
+1. Download `Connectly_API_Collection.json` and `Connectly_Environment.json` from the **Terminal Assessment Testing Evidences** Google Drive folder, then import both into Postman.
 2. In the **Connectly Environment**, set the `google_id_token` variable to the ID token obtained in Step 7.
 3. Open folder **`12. Google OAuth`** in the collection.
 4. Run the **"Valid token → 200 + save DRF token"** request — on success it saves the returned DRF token to `{{google_user_token}}` automatically.
